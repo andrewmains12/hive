@@ -64,6 +64,17 @@ public interface HiveStoragePredicateHandler {
    * Struct class for returning multiple values from decomposePredicate.
    */
   public static class DecomposedPredicate {
+
+    public DecomposedPredicate() {
+
+    }
+
+    public DecomposedPredicate(ExprNodeGenericFuncDesc pushedPredicate, Serializable pushedPredicateObject, ExprNodeGenericFuncDesc residualPredicate) {
+      this.pushedPredicate = pushedPredicate;
+      this.pushedPredicateObject = pushedPredicateObject;
+      this.residualPredicate = residualPredicate;
+    }
+
     /**
      * Portion of predicate to be evaluated by storage handler.  Hive
      * will pass this into the storage handler's input format.

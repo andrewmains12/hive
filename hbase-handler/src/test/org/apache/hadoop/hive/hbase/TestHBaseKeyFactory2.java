@@ -19,20 +19,19 @@
 package org.apache.hadoop.hive.hbase;
 
 import com.google.common.collect.Lists;
+import org.apache.hadoop.hive.hbase.fixedlength.FixedLengthed;
+import org.apache.hadoop.hive.hbase.fixedlength.StringArrayOI;
 import org.apache.hadoop.hive.ql.index.IndexPredicateAnalyzer;
 import org.apache.hadoop.hive.ql.index.IndexSearchCondition;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
-import org.apache.hadoop.hive.serde2.BaseStructObjectInspector;
 import org.apache.hadoop.hive.serde2.ByteStream;
 import org.apache.hadoop.hive.serde2.Deserializer;
 import org.apache.hadoop.hive.serde2.SerDeException;
-import org.apache.hadoop.hive.serde2.lazy.ByteArrayRef;
 import org.apache.hadoop.hive.serde2.lazy.LazyObjectBase;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.mapred.JobConf;
@@ -45,6 +44,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * HBaseKeyFactory for fixed length keys.
+ */
 public class TestHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
 
   private static final int FIXED_LENGTH = 10;
@@ -107,7 +109,7 @@ public class TestHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
     if (!searchConditions.isEmpty()) {
       decomposed.pushedPredicate = analyzer.translateSearchConditions(searchConditions);
       try {
-        decomposed.pushedPredicateObject = Lists.newArrayList(setupFilter(keyColName, searchConditions));
+        decomposed.pushedPredicateObject = Lists.newArrayList(setupFilter(searchConditions));
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
@@ -115,19 +117,9 @@ public class TestHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
     return decomposed;
   }
 
-  private HBaseScanRange setupFilter(String keyColName, List<IndexSearchCondition> conditions)
+  protected HBaseScanRange setupFilter(List<IndexSearchCondition> conditions)
       throws IOException {
-    Map<String, List<IndexSearchCondition>> fieldConds =
-        new HashMap<String, List<IndexSearchCondition>>();
-    for (IndexSearchCondition condition : conditions) {
-      assert keyColName.equals(condition.getColumnDesc().getColumn());
-      String fieldName = condition.getFields()[0];
-      List<IndexSearchCondition> fieldCond = fieldConds.get(fieldName);
-      if (fieldCond == null) {
-        fieldConds.put(fieldName, fieldCond = new ArrayList<IndexSearchCondition>());
-      }
-      fieldCond.add(condition);
-    }
+    Map<String, List<IndexSearchCondition>> fieldConds = groupCondsByFieldName(conditions);
     HBaseScanRange range = new HBaseScanRange();
 
     ByteArrayOutputStream startRow = new ByteArrayOutputStream();
@@ -196,53 +188,19 @@ public class TestHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
     return range;
   }
 
-  private static class FixedLengthed implements LazyObjectBase {
-
-    private final int fixedLength;
-    private final List<Object> fields = new ArrayList<Object>();
-
-    public FixedLengthed(int fixedLength) {
-      this.fixedLength = fixedLength;
-    }
-
-    @Override
-    public void init(ByteArrayRef bytes, int start, int length) {
-      fields.clear();
-      byte[] data = bytes.getData();
-      int rowStart = start;
-      int rowStop = rowStart + fixedLength;
-      for (; rowStart < length; rowStart = rowStop + 1, rowStop = rowStart + fixedLength) {
-        fields.add(new String(data, rowStart, rowStop - rowStart).trim());
+  protected Map<String, List<IndexSearchCondition>> groupCondsByFieldName(List<IndexSearchCondition> conditions) {
+    Map<String, List<IndexSearchCondition>> fieldConds =
+        new HashMap<String, List<IndexSearchCondition>>();
+    for (IndexSearchCondition condition : conditions) {
+      assert keyMapping.getColumnName().equals(condition.getColumnDesc().getColumn());
+      String fieldName = condition.getFields()[0];
+      List<IndexSearchCondition> fieldCond = fieldConds.get(fieldName);
+      if (fieldCond == null) {
+        fieldConds.put(fieldName, fieldCond = new ArrayList<IndexSearchCondition>());
       }
+      fieldCond.add(condition);
     }
-
-    @Override
-    public Object getObject() {
-      return this;
-    }
+    return fieldConds;
   }
 
-  private static class StringArrayOI extends BaseStructObjectInspector {
-
-    private int length;
-
-    private StringArrayOI(StructTypeInfo type) {
-      List<String> names = type.getAllStructFieldNames();
-      List<ObjectInspector> ois = new ArrayList<ObjectInspector>();
-      for (int i = 0; i < names.size(); i++) {
-        ois.add(PrimitiveObjectInspectorFactory.javaStringObjectInspector);
-      }
-      init(names, ois, null);
-    }
-
-    @Override
-    public Object getStructFieldData(Object data, StructField fieldRef) {
-      return ((FixedLengthed)data).fields.get(((MyField)fieldRef).getFieldID());
-    }
-
-    @Override
-    public List<Object> getStructFieldsDataAsList(Object data) {
-      return ((FixedLengthed)data).fields;
-    }
-  }
 }
