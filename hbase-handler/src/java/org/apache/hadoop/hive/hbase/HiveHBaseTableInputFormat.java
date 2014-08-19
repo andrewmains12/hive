@@ -20,7 +20,6 @@ package org.apache.hadoop.hive.hbase;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -82,7 +81,11 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
 
     String hbaseTableName = jobConf.get(HBaseSerDe.HBASE_TABLE_NAME);
 
-    pushScanColumns(scan, jobConf);
+    if (hbaseTableName == null) {
+      throw new IOException("HBase table must be specified in the JobConf");
+    } else {
+      scan.setAttribute(Scan.SCAN_ATTRIBUTES_TABLE_NAME, Bytes.toBytes(hbaseTableName));
+    }
 
     String scanCache = jobConf.get(HBaseSerDe.HBASE_SCAN_CACHE);
     if (scanCache != null) {
@@ -222,8 +225,8 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
 
     String filterExprSerialized = jobConf.get(TableScanDesc.FILTER_EXPR_CONF_STR);
 
-    ExprNodeGenericFuncDesc filterExpr =
-      Utilities.deserializeExpression(filterExprSerialized);
+    ExprNodeGenericFuncDesc filterExpr = filterExprSerialized != null ?
+        Utilities.deserializeExpression(filterExprSerialized) : null;
 
     String colName = jobConf.get(serdeConstants.LIST_COLUMNS).split(",")[iKey];
     String keyColType = jobConf.get(serdeConstants.LIST_COLUMN_TYPES).split(",")[iKey];
