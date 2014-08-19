@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.hive.hbase;
 
+import com.google.common.collect.Lists;
 import org.apache.hadoop.hive.ql.index.IndexPredicateAnalyzer;
 import org.apache.hadoop.hive.ql.index.IndexSearchCondition;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
@@ -106,7 +107,7 @@ public class TestHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
     if (!searchConditions.isEmpty()) {
       decomposed.pushedPredicate = analyzer.translateSearchConditions(searchConditions);
       try {
-        decomposed.pushedPredicateObject = setupFilter(keyColName, searchConditions);
+        decomposed.pushedPredicateObject = Lists.newArrayList(setupFilter(keyColName, searchConditions));
       } catch (IOException e) {
         throw new RuntimeException(e);
       }

@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HConstants;
@@ -68,7 +69,7 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
 
   static final Log LOG = LogFactory.getLog(HiveHBaseTableInputFormat.class);
 
-  public void configureScan(
+  private void configureScan(
     Scan scan,
     JobConf jobConf) throws IOException {
 
@@ -181,7 +182,7 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
    *
    * @return converted scan
    */
-  private Scan createFilterScans(JobConf jobConf) throws IOException {
+  private List<Scan> createFilterScans(JobConf jobConf) throws IOException {
 
     String hbaseColumnsMapping = jobConf.get(HBaseSerDe.HBASE_COLUMNS_MAPPING);
     boolean doColumnRegexMatching = jobConf.getBoolean(HBaseSerDe.HBASE_COLUMNS_REGEX_MATCHING, true);
@@ -202,12 +203,12 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
 
     String filterObjectSerialized = jobConf.get(TableScanDesc.FILTER_OBJECT_CONF_STR);
 
-    HBaseScanRange range;
+    List<HBaseScanRange> ranges;
     if (filterObjectSerialized != null) {
-      range = Utilities.deserializeObject(filterObjectSerialized,
-          HBaseScanRange.class);
+      ranges = (List<HBaseScanRange>) Utilities.deserializeObject(filterObjectSerialized,
+          ArrayList.class);
     } else {
-      range = null;
+      ranges = null;
     }
 
     String filterExprSerialized = jobConf.get(TableScanDesc.FILTER_EXPR_CONF_STR);
@@ -221,7 +222,7 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
     boolean isKeyBinary = getStorageFormatOfKey(keyMapping.mappingSpec,
         jobConf.get(HBaseSerDe.HBASE_TABLE_DEFAULT_STORAGE_TYPE, "string"));
 
-    return createFilterScans(range, filterExpr, colName, colType, isKeyBinary, jobConf);
+    return createFilterScans(ranges, filterExpr, colName, colType, isKeyBinary, jobConf);
   }
 
   /**
@@ -231,23 +232,28 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
    *
    * @return converted scan
    */
-  private Scan createFilterScans(HBaseScanRange range, ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyBinary, JobConf jobConf) throws IOException {
+  private List<Scan> createFilterScans(List<HBaseScanRange> ranges, ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyBinary, JobConf jobConf) throws IOException {
 
     // TODO: assert iKey is HBaseSerDe#HBASE_KEY_COL
 
-    Scan scan = new Scan();
+    if (ranges != null) {
 
-    if (range != null) {
-      try {
-        range.setup(scan, jobConf);
-      } catch (Exception e) {
-        throw new IOException(e);
+      List<Scan> rtn = Lists.newArrayListWithCapacity(ranges.size());
+
+      for (HBaseScanRange range : ranges) {
+        Scan scan = new Scan();
+        try {
+          range.setup(scan, jobConf);
+        } catch (Exception e) {
+          throw new IOException(e);
+        }
+        rtn.add(scan);
       }
-      return scan;
+      return rtn;
     } else if (filterExpr == null) {
-      return scan;
+      return ImmutableList.of(new Scan());
     } else {
-      return createScanFromFilterExpr(filterExpr, keyColName, keyColType, isKeyBinary, scan);
+      return ImmutableList.of(createScanFromFilterExpr(filterExpr, keyColName, keyColType, isKeyBinary));
     }
   }
 
@@ -258,11 +264,11 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
    * @param keyColName
    * @param keyColType
    * @param isKeyBinary
-   * @param scan
    * @return
    * @throws IOException
    */
-  private Scan createScanFromFilterExpr(ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyBinary, Scan scan) throws IOException {
+  private Scan createScanFromFilterExpr(ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyBinary) throws IOException {
+    Scan scan = new Scan();
     IndexPredicateAnalyzer analyzer = newIndexPredicateAnalyzer(keyColName, keyColType, isKeyBinary);
 
     List<IndexSearchCondition> searchConditions =
@@ -418,21 +424,22 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
 
   @Override
   public InputSplit[] getSplits(JobConf jobConf, int numSplits) throws IOException {
-
-
-
     // Take filter pushdown into account while calculating splits; this
     // allows us to prune off regions immediately.  Note that although
     // the Javadoc for the superclass getSplits says that it returns one
     // split per region, the implementation actually takes the scan
     // definition into account and excludes regions which don't satisfy
     // the start/stop row conditions (HBASE-1829).
-    Scan scan = createFilterScans(jobConf);
+    List<Scan> scans = createFilterScans(jobConf);
     // REVIEW:  are we supposed to be applying the getReadColumnIDs
     // same as in getRecordReader?
-    pushScanColumns(scan, jobConf);
-    configureScan(scan, jobConf);
-    setScans(ImmutableList.of(scan));
+
+    for (Scan scan : scans) {
+      pushScanColumns(scan, jobConf);
+      configureScan(scan, jobConf);
+    }
+
+    setScans(scans);
     return super.getSplits(jobConf, numSplits);
   }
 
