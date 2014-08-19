@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HConstants;
@@ -75,7 +76,7 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
   static final Log LOG = LogFactory.getLog(HiveHBaseTableInputFormat.class);
   private static final Object hbaseTableMonitor = new Object();
 
-  public void configureScan(
+  private void configureScan(
     Scan scan,
     JobConf jobConf) throws IOException {
 
@@ -188,7 +189,8 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
    *
    * @return converted scan
    */
-  private Scan createFilterScans(JobConf jobConf) throws IOException {
+  private List<Scan> createFilterScans(JobConf jobConf) throws IOException {
+
     String hbaseColumnsMapping = jobConf.get(HBaseSerDe.HBASE_COLUMNS_MAPPING);
     boolean doColumnRegexMatching = jobConf.getBoolean(HBaseSerDe.HBASE_COLUMNS_REGEX_MATCHING, true);
 
@@ -208,17 +210,14 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
 
     int iTimestamp = columnMappings.getTimestampIndex();
 
-    boolean isKeyBinary = HiveHBaseInputFormatUtil.getStorageFormatOfKey(keyMapping.mappingSpec,
-        jobConf.get(HBaseSerDe.HBASE_TABLE_DEFAULT_STORAGE_TYPE, "string"));
-
     String filterObjectSerialized = jobConf.get(TableScanDesc.FILTER_OBJECT_CONF_STR);
 
-    HBaseScanRange range;
+    List<HBaseScanRange> ranges;
     if (filterObjectSerialized != null) {
-      range = Utilities.deserializeObject(filterObjectSerialized,
-          HBaseScanRange.class);
+      ranges = (List<HBaseScanRange>) Utilities.deserializeObject(filterObjectSerialized,
+          ArrayList.class);
     } else {
-      range = null;
+      ranges = null;
     }
 
     String filterExprSerialized = jobConf.get(TableScanDesc.FILTER_EXPR_CONF_STR);
@@ -226,8 +225,11 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
     ExprNodeGenericFuncDesc filterExpr =
       Utilities.deserializeExpression(filterExprSerialized);
 
-    String keyColName = jobConf.get(serdeConstants.LIST_COLUMNS).split(",")[iKey];
+    String colName = jobConf.get(serdeConstants.LIST_COLUMNS).split(",")[iKey];
     String keyColType = jobConf.get(serdeConstants.LIST_COLUMN_TYPES).split(",")[iKey];
+    boolean isKeyBinary = HiveHBaseInputFormatUtil.getStorageFormatOfKey(keyMapping.mappingSpec,
+        jobConf.get(HBaseSerDe.HBASE_TABLE_DEFAULT_STORAGE_TYPE, "string"));
+
     boolean isKeyComparable = isKeyBinary || keyColType.equalsIgnoreCase("string");
 
     String tsColName = null;
@@ -235,7 +237,7 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
       tsColName = jobConf.get(serdeConstants.LIST_COLUMNS).split(",")[iTimestamp];
     }
 
-    return createFilterScans(range, filterExpr, keyColName, keyColType, isKeyComparable, tsColName, jobConf);
+    return createFilterScans(ranges, filterExpr, colName, keyColType, isKeyComparable, tsColName, jobConf);
   }
 
   /**
@@ -245,24 +247,28 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
    *
    * @return converted scan
    */
-  private Scan createFilterScans(HBaseScanRange range, 
-								 ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyComparable, String tsColName, JobConf jobConf) throws IOException {
+  private List<Scan> createFilterScans(List<HBaseScanRange> ranges, ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyComparable, String tsColName, JobConf jobConf) throws IOException {
 
     // TODO: assert iKey is HBaseSerDe#HBASE_KEY_COL
 
-    Scan scan = new Scan();
+    if (ranges != null) {
 
-    if (range != null) {
-      try {
-        range.setup(scan, jobConf);
-      } catch (Exception e) {
-        throw new IOException(e);
+      List<Scan> rtn = Lists.newArrayListWithCapacity(ranges.size());
+
+      for (HBaseScanRange range : ranges) {
+        Scan scan = new Scan();
+        try {
+          range.setup(scan, jobConf);
+        } catch (Exception e) {
+          throw new IOException(e);
+        }
+        rtn.add(scan);
       }
-      return scan;
+      return rtn;
     } else if (filterExpr == null) {
-      return scan;
+      return ImmutableList.of(new Scan());
     } else {
-      return createScanFromFilterExpr(filterExpr, keyColName, keyColType, isKeyComparable, tsColName, scan);
+      return ImmutableList.of(createScanFromFilterExpr(filterExpr, keyColName, keyColType, isKeyComparable, tsColName));
     }
   }
 
@@ -273,11 +279,11 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
    * @param keyColName
    * @param keyColType
    * @param isKeyComparable
-   * @param scan
    * @return
    * @throws IOException
    */
-  private Scan createScanFromFilterExpr(ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyComparable, String tsColName, Scan scan) throws IOException {
+  private Scan createScanFromFilterExpr(ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyComparable, String tsColName) throws IOException {
+    Scan scan = new Scan();
 
     IndexPredicateAnalyzer analyzer =
         newIndexPredicateAnalyzer(keyColName, isKeyComparable, tsColName);
@@ -512,13 +518,16 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
     // split per region, the implementation actually takes the scan
     // definition into account and excludes regions which don't satisfy
     // the start/stop row conditions (HBASE-1829).
-
-    Scan scan = createFilterScans(jobConf);
+    List<Scan> scans = createFilterScans(jobConf);
     // REVIEW:  are we supposed to be applying the getReadColumnIDs
     // same as in getRecordReader?
-    pushScanColumns(scan, jobConf);
-    configureScan(scan, jobConf);
-    setScans(ImmutableList.of(scan));
+
+    for (Scan scan : scans) {
+      pushScanColumns(scan, jobConf);
+      configureScan(scan, jobConf);
+    }
+
+    setScans(scans);
     return super.getSplits(jobConf, numSplits);
   }
 }
