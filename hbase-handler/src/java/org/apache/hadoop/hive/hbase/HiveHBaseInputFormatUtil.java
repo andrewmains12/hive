@@ -51,6 +51,29 @@ class HiveHBaseInputFormatUtil {
    * Parse {@code jobConf} to create a {@link Scan} instance.
    */
   public static Scan getScan(JobConf jobConf) throws IOException {
+    Scan scan = new Scan();
+    configureScan(jobConf, scan);
+    return scan;
+  }
+
+  public static void configureScan(JobConf jobConf, Scan scan) throws IOException {
+    pushScanColumns(jobConf, scan);
+
+    String scanCache = jobConf.get(HBaseSerDe.HBASE_SCAN_CACHE);
+    if (scanCache != null) {
+      scan.setCaching(Integer.valueOf(scanCache));
+    }
+    String scanCacheBlocks = jobConf.get(HBaseSerDe.HBASE_SCAN_CACHEBLOCKS);
+    if (scanCacheBlocks != null) {
+      scan.setCacheBlocks(Boolean.valueOf(scanCacheBlocks));
+    }
+    String scanBatch = jobConf.get(HBaseSerDe.HBASE_SCAN_BATCH);
+    if (scanBatch != null) {
+      scan.setBatch(Integer.valueOf(scanBatch));
+    }
+  }
+
+  public static void pushScanColumns(JobConf jobConf, Scan scan) throws IOException {
     String hbaseColumnsMapping = jobConf.get(HBaseSerDe.HBASE_COLUMNS_MAPPING);
     boolean doColumnRegexMatching = jobConf.getBoolean(HBaseSerDe.HBASE_COLUMNS_REGEX_MATCHING, true);
     List<Integer> readColIDs = ColumnProjectionUtils.getReadColumnIDs(jobConf);
@@ -67,7 +90,11 @@ class HiveHBaseInputFormatUtil {
     }
 
     boolean readAllColumns = ColumnProjectionUtils.isReadAllColumns(jobConf);
-    Scan scan = new Scan();
+
+    pushScanColumns(scan, columnMappings, readAllColumns, readColIDs);
+  }
+
+  public static void pushScanColumns(Scan scan, ColumnMappings columnMappings, boolean readAllColumns, List<Integer> readColIDs) {
     boolean empty = true;
 
     // The list of families that have been added to the scan
@@ -117,20 +144,6 @@ class HiveHBaseInputFormatUtil {
         }
       }
     }
-
-    String scanCache = jobConf.get(HBaseSerDe.HBASE_SCAN_CACHE);
-    if (scanCache != null) {
-      scan.setCaching(Integer.valueOf(scanCache));
-    }
-    String scanCacheBlocks = jobConf.get(HBaseSerDe.HBASE_SCAN_CACHEBLOCKS);
-    if (scanCacheBlocks != null) {
-      scan.setCacheBlocks(Boolean.valueOf(scanCacheBlocks));
-    }
-    String scanBatch = jobConf.get(HBaseSerDe.HBASE_SCAN_BATCH);
-    if (scanBatch != null) {
-      scan.setBatch(Integer.valueOf(scanBatch));
-    }
-    return scan;
   }
 
   public static boolean getStorageFormatOfKey(String spec, String defaultFormat) throws IOException{
