@@ -24,18 +24,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.google.common.collect.ImmutableList;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
-import org.apache.hadoop.hbase.client.HTable;
-import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
 import org.apache.hadoop.hbase.mapred.TableMapReduceUtil;
-import org.apache.hadoop.hbase.mapreduce.TableInputFormatBase;
-import org.apache.hadoop.hbase.mapreduce.TableSplit;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hive.hbase.ColumnMappings.ColumnMapping;
 import org.apache.hadoop.hive.ql.exec.ExprNodeConstantEvaluator;
@@ -48,6 +43,7 @@ import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 import org.apache.hadoop.hive.ql.plan.TableScanDesc;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.ByteStream;
+import org.apache.hadoop.hive.serde2.ColumnProjectionUtils;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.io.ByteWritable;
 import org.apache.hadoop.hive.serde2.io.DoubleWritable;
@@ -58,7 +54,6 @@ import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.LongObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
-import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.io.BooleanWritable;
 import org.apache.hadoop.io.FloatWritable;
 import org.apache.hadoop.io.IntWritable;
@@ -67,12 +62,6 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.RecordReader;
-import org.apache.hadoop.mapred.Reporter;
-import org.apache.hadoop.mapreduce.Job;
-import org.apache.hadoop.mapreduce.JobContext;
-import org.apache.hadoop.mapreduce.TaskAttemptContext;
-import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.security.UserGroupInformation;
 
 /**
@@ -80,90 +69,173 @@ import org.apache.hadoop.security.UserGroupInformation;
  * tables, decorating an underlying HBase TableInputFormat with extra Hive logic
  * such as column pruning and filter pushdown.
  */
-public class HiveHBaseTableInputFormat extends TableInputFormatBase
+public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
     implements InputFormat<ImmutableBytesWritable, ResultWritable> {
 
   static final Log LOG = LogFactory.getLog(HiveHBaseTableInputFormat.class);
   private static final Object hbaseTableMonitor = new Object();
 
-  @Override
-  public RecordReader<ImmutableBytesWritable, ResultWritable> getRecordReader(
-    InputSplit split,
-    JobConf jobConf,
-    final Reporter reporter) throws IOException {
+  public void configureScan(
+    Scan scan,
+    JobConf jobConf) throws IOException {
 
-    HBaseSplit hbaseSplit = (HBaseSplit) split;
-    TableSplit tableSplit = hbaseSplit.getTableSplit();
+    String hbaseTableName = jobConf.get(HBaseSerDe.HBASE_TABLE_NAME);
 
-    setHTable(HiveHBaseInputFormatUtil.getTable(jobConf));
-    setScan(HiveHBaseInputFormatUtil.getScan(jobConf));
+    pushScanColumns(scan, jobConf);
 
-    Job job = new Job(jobConf);
-    TaskAttemptContext tac = ShimLoader.getHadoopShims().newTaskAttemptContext(
-        job.getConfiguration(), reporter);
+    String scanCache = jobConf.get(HBaseSerDe.HBASE_SCAN_CACHE);
+    if (scanCache != null) {
+      scan.setCaching(Integer.valueOf(scanCache));
+    }
+    String scanCacheBlocks = jobConf.get(HBaseSerDe.HBASE_SCAN_CACHEBLOCKS);
+    if (scanCacheBlocks != null) {
+      scan.setCacheBlocks(Boolean.valueOf(scanCacheBlocks));
+    }
+    String scanBatch = jobConf.get(HBaseSerDe.HBASE_SCAN_BATCH);
+    if (scanBatch != null) {
+      scan.setBatch(Integer.valueOf(scanBatch));
+    }
+  }
 
-    final org.apache.hadoop.mapreduce.RecordReader<ImmutableBytesWritable, Result>
-    recordReader = createRecordReader(tableSplit, tac);
+  /**
+   * Push the configured columns to be read into scan, reading all necessary values from jobConf and delegating
+   * to {@link #pushScanColumns(org.apache.hadoop.hbase.client.Scan, ColumnMappings, java.util.List, boolean)}
+   * @param scan
+   * @param jobConf
+   * @throws IOException
+   */
+  private void pushScanColumns(Scan scan, JobConf jobConf) throws IOException {
+    String hbaseColumnsMapping = jobConf.get(HBaseSerDe.HBASE_COLUMNS_MAPPING);
+    boolean doColumnRegexMatching = jobConf.getBoolean(HBaseSerDe.HBASE_COLUMNS_REGEX_MATCHING, true);
+    ColumnMappings columnMappings;
+
     try {
-      recordReader.initialize(tableSplit, tac);
-    } catch (InterruptedException e) {
-      throw new IOException("Failed to initialize RecordReader", e);
+      columnMappings = HBaseSerDe.parseColumnsMapping(hbaseColumnsMapping, doColumnRegexMatching);
+    } catch (SerDeException e) {
+      throw new IOException(e);
     }
 
-    return new RecordReader<ImmutableBytesWritable, ResultWritable>() {
+    List<Integer> readColIDs = ColumnProjectionUtils.getReadColumnIDs(jobConf);
 
-      @Override
-      public void close() throws IOException {
-        recordReader.close();
-      }
+    boolean readAllColumns = ColumnProjectionUtils.isReadAllColumns(jobConf);
 
-      @Override
-      public ImmutableBytesWritable createKey() {
-        return new ImmutableBytesWritable();
-      }
+    pushScanColumns(scan, columnMappings, readColIDs, readAllColumns);
+  }
 
-      @Override
-      public ResultWritable createValue() {
-        return new ResultWritable(new Result());
-      }
+  private void pushScanColumns(Scan scan, ColumnMappings columnMappings, List<Integer> readColIDs, boolean readAllColumns) throws IOException {
 
-      @Override
-      public long getPos() throws IOException {
-        return 0;
-      }
 
-      @Override
-      public float getProgress() throws IOException {
-        float progress = 0.0F;
+    if (columnMappings.size() < readColIDs.size()) {
+      throw new IOException("Cannot read more columns than the given table contains.");
+    }
 
-        try {
-          progress = recordReader.getProgress();
-        } catch (InterruptedException e) {
-          throw new IOException(e);
+    boolean empty = true;
+
+    // The list of families that have been added to the scan
+    List<String> addedFamilies = new ArrayList<String>();
+
+    if (!readAllColumns) {
+      ColumnMapping[] columnsMapping = columnMappings.getColumnsMapping();
+      for (int i : readColIDs) {
+        ColumnMapping colMap = columnsMapping[i];
+        if (colMap.hbaseRowKey) {
+          continue;
         }
 
-        return progress;
-      }
-
-      @Override
-      public boolean next(ImmutableBytesWritable rowKey, ResultWritable value) throws IOException {
-
-        boolean next = false;
-
-        try {
-          next = recordReader.nextKeyValue();
-
-          if (next) {
-            rowKey.set(recordReader.getCurrentValue().getRow());
-            value.setResult(recordReader.getCurrentValue());
+        if (colMap.qualifierName == null) {
+          scan.addFamily(colMap.familyNameBytes);
+          addedFamilies.add(colMap.familyName);
+        } else {
+          if(!addedFamilies.contains(colMap.familyName)){
+            // add only if the corresponding family has not already been added
+            scan.addColumn(colMap.familyNameBytes, colMap.qualifierNameBytes);
           }
-        } catch (InterruptedException e) {
-          throw new IOException(e);
         }
 
-        return next;
+        empty = false;
       }
-    };
+    }
+
+    // The HBase table's row key maps to a Hive table column. In the corner case when only the
+    // row key column is selected in Hive, the HBase Scan will be empty i.e. no column family/
+    // column qualifier will have been added to the scan. We arbitrarily add at least one column
+    // to the HBase scan so that we can retrieve all of the row keys and return them as the Hive
+    // tables column projection.
+    if (empty) {
+      for (ColumnMapping colMap: columnMappings) {
+        if (colMap.hbaseRowKey) {
+          continue;
+        }
+
+        if (colMap.qualifierName == null) {
+          scan.addFamily(colMap.familyNameBytes);
+        } else {
+          scan.addColumn(colMap.familyNameBytes, colMap.qualifierNameBytes);
+        }
+
+        if (!readAllColumns) {
+          break;
+        }
+      }
+    }
+  }
+
+
+  /**
+   * Converts a filter (which has been pushed down from Hive's optimizer)
+   * into corresponding restrictions on the HBase scan.  The
+   * filter should already be in a form which can be fully converted.
+   *
+   * @return converted scan
+   */
+  private Scan createFilterScans(JobConf jobConf) throws IOException {
+    String hbaseColumnsMapping = jobConf.get(HBaseSerDe.HBASE_COLUMNS_MAPPING);
+    boolean doColumnRegexMatching = jobConf.getBoolean(HBaseSerDe.HBASE_COLUMNS_REGEX_MATCHING, true);
+
+    if (hbaseColumnsMapping == null) {
+      throw new IOException("hbase.columns.mapping required for HBase Table.");
+    }
+
+    ColumnMappings columnMappings;
+    try {
+      columnMappings = HBaseSerDe.parseColumnsMapping(hbaseColumnsMapping,doColumnRegexMatching);
+    } catch (SerDeException e) {
+      throw new IOException(e);
+    }
+
+    int iKey = columnMappings.getKeyIndex();
+    ColumnMapping keyMapping = columnMappings.getKeyMapping();
+
+    int iTimestamp = columnMappings.getTimestampIndex();
+
+    boolean isKeyBinary = HiveHBaseInputFormatUtil.getStorageFormatOfKey(keyMapping.mappingSpec,
+        jobConf.get(HBaseSerDe.HBASE_TABLE_DEFAULT_STORAGE_TYPE, "string"));
+
+    String filterObjectSerialized = jobConf.get(TableScanDesc.FILTER_OBJECT_CONF_STR);
+
+    HBaseScanRange range;
+    if (filterObjectSerialized != null) {
+      range = Utilities.deserializeObject(filterObjectSerialized,
+          HBaseScanRange.class);
+    } else {
+      range = null;
+    }
+
+    String filterExprSerialized = jobConf.get(TableScanDesc.FILTER_EXPR_CONF_STR);
+
+    ExprNodeGenericFuncDesc filterExpr =
+      Utilities.deserializeExpression(filterExprSerialized);
+
+    String keyColName = jobConf.get(serdeConstants.LIST_COLUMNS).split(",")[iKey];
+    String keyColType = jobConf.get(serdeConstants.LIST_COLUMN_TYPES).split(",")[iKey];
+    boolean isKeyComparable = isKeyBinary || keyColType.equalsIgnoreCase("string");
+
+    String tsColName = null;
+    if (iTimestamp >= 0) {
+      tsColName = jobConf.get(serdeConstants.LIST_COLUMNS).split(",")[iTimestamp];
+    }
+
+    return createFilterScans(range, filterExpr, keyColName, keyColType, isKeyComparable, tsColName, jobConf);
   }
 
   /**
@@ -171,46 +243,41 @@ public class HiveHBaseTableInputFormat extends TableInputFormatBase
    * into corresponding restrictions on the HBase scan.  The
    * filter should already be in a form which can be fully converted.
    *
-   * @param jobConf configuration for the scan
-   *
-   * @param iKey 0-based offset of key column within Hive table
-   *
-   * @return converted table split if any
+   * @return converted scan
    */
-  private Scan createFilterScan(JobConf jobConf, int iKey, int iTimestamp, boolean isKeyBinary)
-      throws IOException {
+  private Scan createFilterScans(HBaseScanRange range, 
+								 ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyComparable, String tsColName, JobConf jobConf) throws IOException {
 
     // TODO: assert iKey is HBaseSerDe#HBASE_KEY_COL
 
     Scan scan = new Scan();
-    String filterObjectSerialized = jobConf.get(TableScanDesc.FILTER_OBJECT_CONF_STR);
-    if (filterObjectSerialized != null) {
-      HBaseScanRange range = Utilities.deserializeObject(filterObjectSerialized,
-          HBaseScanRange.class);
+
+    if (range != null) {
       try {
         range.setup(scan, jobConf);
       } catch (Exception e) {
         throw new IOException(e);
       }
       return scan;
-    }
-
-    String filterExprSerialized = jobConf.get(TableScanDesc.FILTER_EXPR_CONF_STR);
-    if (filterExprSerialized == null) {
+    } else if (filterExpr == null) {
       return scan;
+    } else {
+      return createScanFromFilterExpr(filterExpr, keyColName, keyColType, isKeyComparable, tsColName, scan);
     }
+  }
 
-    ExprNodeGenericFuncDesc filterExpr =
-      Utilities.deserializeExpression(filterExprSerialized);
-
-    String keyColName = jobConf.get(serdeConstants.LIST_COLUMNS).split(",")[iKey];
-    String colType = jobConf.get(serdeConstants.LIST_COLUMN_TYPES).split(",")[iKey];
-    boolean isKeyComparable = isKeyBinary || colType.equalsIgnoreCase("string");
-
-    String tsColName = null;
-    if (iTimestamp >= 0) {
-      tsColName = jobConf.get(serdeConstants.LIST_COLUMNS).split(",")[iTimestamp];
-    }
+  /**
+   * Create a scan with the filters represented by filterExpr. TODO: this code path may not be hittable anymore; excise
+   * it if so.
+   * @param filterExpr
+   * @param keyColName
+   * @param keyColType
+   * @param isKeyComparable
+   * @param scan
+   * @return
+   * @throws IOException
+   */
+  private Scan createScanFromFilterExpr(ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyComparable, String tsColName, Scan scan) throws IOException {
 
     IndexPredicateAnalyzer analyzer =
         newIndexPredicateAnalyzer(keyColName, isKeyComparable, tsColName);
@@ -232,7 +299,7 @@ public class HiveHBaseTableInputFormat extends TableInputFormatBase
     Map<String, List<IndexSearchCondition>> split = HiveHBaseInputFormatUtil.decompose(conditions);
     List<IndexSearchCondition> keyConditions = split.get(keyColName);
     if (keyConditions != null && !keyConditions.isEmpty()) {
-      setupKeyRange(scan, keyConditions, isKeyBinary);
+      setupKeyRange(scan, keyConditions, isKeyComparable);
     }
     List<IndexSearchCondition> tsConditions = split.get(tsColName);
     if (tsConditions != null && !tsConditions.isEmpty()) {
@@ -336,7 +403,7 @@ public class HiveHBaseTableInputFormat extends TableInputFormatBase
     return timestamp;
   }
 
-    private byte[] getConstantVal(Object writable, PrimitiveObjectInspector poi,
+  private byte[] getConstantVal(Object writable, PrimitiveObjectInspector poi,
         boolean isKeyBinary) throws IOException{
 
         if (!isKeyBinary){
@@ -434,31 +501,10 @@ public class HiveHBaseTableInputFormat extends TableInputFormatBase
   }
 
   private InputSplit[] getSplitsInternal(JobConf jobConf, int numSplits) throws IOException {
-
     //obtain delegation tokens for the job
     if (UserGroupInformation.getCurrentUser().hasKerberosCredentials()) {
       TableMapReduceUtil.initCredentials(jobConf);
     }
-
-    String hbaseTableName = jobConf.get(HBaseSerDe.HBASE_TABLE_NAME);
-    setHTable(new HTable(HBaseConfiguration.create(jobConf), Bytes.toBytes(hbaseTableName)));
-    String hbaseColumnsMapping = jobConf.get(HBaseSerDe.HBASE_COLUMNS_MAPPING);
-    boolean doColumnRegexMatching = jobConf.getBoolean(HBaseSerDe.HBASE_COLUMNS_REGEX_MATCHING, true);
-
-    if (hbaseColumnsMapping == null) {
-      throw new IOException(HBaseSerDe.HBASE_COLUMNS_MAPPING + " required for HBase Table.");
-    }
-
-    ColumnMappings columnMappings = null;
-    try {
-      columnMappings = HBaseSerDe.parseColumnsMapping(hbaseColumnsMapping, doColumnRegexMatching);
-    } catch (SerDeException e) {
-      throw new IOException(e);
-    }
-
-    int iKey = columnMappings.getKeyIndex();
-    int iTimestamp = columnMappings.getTimestampIndex();
-    ColumnMapping keyMapping = columnMappings.getKeyMapping();
 
     // Take filter pushdown into account while calculating splits; this
     // allows us to prune off regions immediately.  Note that although
@@ -466,44 +512,13 @@ public class HiveHBaseTableInputFormat extends TableInputFormatBase
     // split per region, the implementation actually takes the scan
     // definition into account and excludes regions which don't satisfy
     // the start/stop row conditions (HBASE-1829).
-    Scan scan = createFilterScan(jobConf, iKey, iTimestamp,
-        HiveHBaseInputFormatUtil.getStorageFormatOfKey(keyMapping.mappingSpec,
-            jobConf.get(HBaseSerDe.HBASE_TABLE_DEFAULT_STORAGE_TYPE, "string")));
 
-    // The list of families that have been added to the scan
-    List<String> addedFamilies = new ArrayList<String>();
-
+    Scan scan = createFilterScans(jobConf);
     // REVIEW:  are we supposed to be applying the getReadColumnIDs
     // same as in getRecordReader?
-    for (ColumnMapping colMap : columnMappings) {
-      if (colMap.hbaseRowKey || colMap.hbaseTimestamp) {
-        continue;
-      }
-
-      if (colMap.qualifierName == null) {
-        scan.addFamily(colMap.familyNameBytes);
-        addedFamilies.add(colMap.familyName);
-      } else {
-        if(!addedFamilies.contains(colMap.familyName)){
-          // add the column only if the family has not already been added
-          scan.addColumn(colMap.familyNameBytes, colMap.qualifierNameBytes);
-        }
-      }
-    }
-    setScan(scan);
-
-    Job job = new Job(jobConf);
-    JobContext jobContext = ShimLoader.getHadoopShims().newJobContext(job);
-    Path [] tablePaths = FileInputFormat.getInputPaths(jobContext);
-
-    List<org.apache.hadoop.mapreduce.InputSplit> splits =
-      super.getSplits(jobContext);
-    InputSplit [] results = new InputSplit[splits.size()];
-
-    for (int i = 0; i < splits.size(); i++) {
-      results[i] = new HBaseSplit((TableSplit) splits.get(i), tablePaths[0]);
-    }
-
-    return results;
+    pushScanColumns(scan, jobConf);
+    configureScan(scan, jobConf);
+    setScans(ImmutableList.of(scan));
+    return super.getSplits(jobConf, numSplits);
   }
 }
