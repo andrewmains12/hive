@@ -42,7 +42,7 @@ public class HiveMultiTableInputFormatBase extends MultiTableInputFormatBase imp
   @Override
   public RecordReader<ImmutableBytesWritable, ResultWritable> getRecordReader(InputSplit inputSplit, JobConf jobConf, Reporter reporter) throws IOException {
     HBaseSplit hbaseSplit = (HBaseSplit) inputSplit;
-    TableSplit tableSplit = hbaseSplit.getSplit();
+    TableSplit tableSplit = hbaseSplit.getTableSplit();
     Job job = new Job(jobConf);
     HadoopShims hadoopShims = ShimLoader.getHadoopShims();
     TaskAttemptContext tac = hadoopShims.newTaskAttemptContext(
