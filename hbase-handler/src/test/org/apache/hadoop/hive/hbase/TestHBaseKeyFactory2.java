@@ -114,7 +114,7 @@ public class TestHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
     return decomposed;
   }
 
-  private HBaseScanRange setupFilter(String keyColName, List<IndexSearchCondition> conditions)
+  protected HBaseScanRange setupFilter(String keyColName, List<IndexSearchCondition> conditions)
       throws IOException {
     Map<String, List<IndexSearchCondition>> fieldConds =
         new HashMap<String, List<IndexSearchCondition>>();

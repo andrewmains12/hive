@@ -108,7 +108,7 @@ public class TestMultiScanHBaseKeyFactory extends TestHBaseKeyFactory2 {
       }
 
       if (conditionOnBucket) {
-        scanRanges = Lists.newArrayList(super.setupFilter(searchConds));
+        scanRanges = Lists.newArrayList(super.setupFilter(keyMapping.getColumnName(), searchConds));
       } else {
         scanRanges = Lists.newArrayList();
         List<IndexSearchCondition> searchCondsWithBucket = cons(null, searchConds);
@@ -116,7 +116,7 @@ public class TestMultiScanHBaseKeyFactory extends TestHBaseKeyFactory2 {
         for (int i = 0; i < this.numBuckets; i++) {
           ExprNodeColumnDesc keyColumnDesc = searchConds.get(0).getColumnDesc();
           searchCondsWithBucket.set(0, searchConditionForBucketValue(bucketCol, i, keyColumnDesc));
-          scanRanges.add(super.setupFilter(searchCondsWithBucket));
+          scanRanges.add(super.setupFilter(keyMapping.getColumnName(), searchCondsWithBucket));
         }
       }
     } catch (IOException e) {
