@@ -19,8 +19,6 @@
 package org.apache.hadoop.hive.hbase;
 
 import com.google.common.collect.Lists;
-import org.apache.hadoop.hive.hbase.fixedlength.FixedLengthed;
-import org.apache.hadoop.hive.hbase.fixedlength.StringArrayOI;
 import org.apache.hadoop.hive.ql.index.IndexPredicateAnalyzer;
 import org.apache.hadoop.hive.ql.index.IndexSearchCondition;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
@@ -204,6 +202,64 @@ public class SampleHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
       fieldCond.add(condition);
     }
     return fieldConds;
+  }
+
+  private static class FixedLengthed implements LazyObjectBase {
+
+    private final int fixedLength;
+    private final List<Object> fields = new ArrayList<Object>();
+    private boolean isNull;
+
+    public FixedLengthed(int fixedLength) {
+      this.fixedLength = fixedLength;
+    }
+
+    @Override
+    public void init(ByteArrayRef bytes, int start, int length) {
+      fields.clear();
+      byte[] data = bytes.getData();
+      int rowStart = start;
+      int rowStop = rowStart + fixedLength;
+      for (; rowStart < length; rowStart = rowStop + 1, rowStop = rowStart + fixedLength) {
+        fields.add(new String(data, rowStart, rowStop - rowStart).trim());
+      }
+
+      isNull = false;
+    }
+
+    @Override
+    public void setNull() {
+      isNull = true;
+    }
+
+    @Override
+    public Object getObject() {
+      return isNull ? null : this;
+    }
+  }
+
+  private static class StringArrayOI extends BaseStructObjectInspector {
+
+    private int length;
+
+    private StringArrayOI(StructTypeInfo type) {
+      List<String> names = type.getAllStructFieldNames();
+      List<ObjectInspector> ois = new ArrayList<ObjectInspector>();
+      for (int i = 0; i < names.size(); i++) {
+        ois.add(PrimitiveObjectInspectorFactory.javaStringObjectInspector);
+      }
+      init(names, ois, null);
+    }
+
+    @Override
+    public Object getStructFieldData(Object data, StructField fieldRef) {
+      return ((FixedLengthed)data).fields.get(((MyField)fieldRef).getFieldID());
+    }
+
+    @Override
+    public List<Object> getStructFieldsDataAsList(Object data) {
+      return ((FixedLengthed)data).fields;
+    }
   }
 
 }
