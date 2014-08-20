@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.hive.hbase;
 
-import com.google.common.collect.Lists;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.util.Properties;
