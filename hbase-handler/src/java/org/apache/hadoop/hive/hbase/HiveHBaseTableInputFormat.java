@@ -69,6 +69,27 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
 
   static final Log LOG = LogFactory.getLog(HiveHBaseTableInputFormat.class);
 
+  @Override
+  public InputSplit[] getSplits(JobConf jobConf, int numSplits) throws IOException {
+    // Take filter pushdown into account while calculating splits; this
+    // allows us to prune off regions immediately.  Note that although
+    // the Javadoc for the superclass getSplits says that it returns one
+    // split per region, the implementation actually takes the scan
+    // definition into account and excludes regions which don't satisfy
+    // the start/stop row conditions (HBASE-1829).
+    List<Scan> scans = createFilterScans(jobConf);
+    // REVIEW:  are we supposed to be applying the getReadColumnIDs
+    // same as in getRecordReader?
+
+    for (Scan scan : scans) {
+      pushScanColumns(scan, jobConf);
+      configureScan(scan, jobConf);
+    }
+
+    setScans(scans);
+    return super.getSplits(jobConf, numSplits);
+  }
+
   private void configureScan(
     Scan scan,
     JobConf jobConf) throws IOException {
@@ -181,9 +202,10 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
 
   /**
    * Converts a filter (which has been pushed down from Hive's optimizer)
-   * into corresponding restrictions on the HBase scan.  The
-   * filter should already be in a form which can be fully converted.
+   * into corresponding restrictions on the HBase scan.
    *
+   * If a list of HBaseScanRanges has been pushed as TableScanDesc.FILTER_OBJECT_CONF_STR, use that; otherwise use TableScanDesc.FILTER_EXPR_CONF_STR. If nothing has been
+   * pushed, return a single element list containing an unbounded scan.
    * @return converted scan
    */
   private List<Scan> createFilterScans(JobConf jobConf) throws IOException {
@@ -207,14 +229,11 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
 
     String filterObjectSerialized = jobConf.get(TableScanDesc.FILTER_OBJECT_CONF_STR);
 
-    List<HBaseScanRange> ranges;
+    List<HBaseScanRange> ranges = null;
     if (filterObjectSerialized != null) {
       ranges = (List<HBaseScanRange>) Utilities.deserializeObject(filterObjectSerialized,
           ArrayList.class);
-    } else {
-      ranges = null;
     }
-
     String filterExprSerialized = jobConf.get(TableScanDesc.FILTER_EXPR_CONF_STR);
 
     ExprNodeGenericFuncDesc filterExpr = filterExprSerialized != null ?
@@ -230,18 +249,14 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
   }
 
   /**
-   * Converts a filter (which has been pushed down from Hive's optimizer)
-   * into corresponding restrictions on the HBase scan.  The
-   * filter should already be in a form which can be fully converted.
-   *
-   * @return converted scan
+   * Perform the actual conversion from pushed objects (deserialized from the JobConf)
+   * to a List<Scan>
    */
   private List<Scan> createFilterScans(List<HBaseScanRange> ranges, ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyBinary, JobConf jobConf) throws IOException {
 
     // TODO: assert iKey is HBaseSerDe#HBASE_KEY_COL
 
     if (ranges != null) {
-
       List<Scan> rtn = Lists.newArrayListWithCapacity(ranges.size());
 
       for (HBaseScanRange range : ranges) {
@@ -262,8 +277,7 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
   }
 
   /**
-   * Create a scan with the filters represented by filterExpr. TODO: this code path may not be hittable anymore; excise
-   * it if so.
+   * Create a scan with the filters represented by filterExpr.
    * @param filterExpr
    * @param keyColName
    * @param keyColType
@@ -424,27 +438,6 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
     analyzer.allowColumnName(keyColumnName);
 
     return analyzer;
-  }
-
-  @Override
-  public InputSplit[] getSplits(JobConf jobConf, int numSplits) throws IOException {
-    // Take filter pushdown into account while calculating splits; this
-    // allows us to prune off regions immediately.  Note that although
-    // the Javadoc for the superclass getSplits says that it returns one
-    // split per region, the implementation actually takes the scan
-    // definition into account and excludes regions which don't satisfy
-    // the start/stop row conditions (HBASE-1829).
-    List<Scan> scans = createFilterScans(jobConf);
-    // REVIEW:  are we supposed to be applying the getReadColumnIDs
-    // same as in getRecordReader?
-
-    for (Scan scan : scans) {
-      pushScanColumns(scan, jobConf);
-      configureScan(scan, jobConf);
-    }
-
-    setScans(scans);
-    return super.getSplits(jobConf, numSplits);
   }
 
   private boolean getStorageFormatOfKey(String spec, String defaultFormat) throws IOException{
