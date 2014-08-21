@@ -19,7 +19,9 @@
 package org.apache.hadoop.hive.hbase;
 
 import org.apache.hadoop.hive.ql.metadata.HiveStoragePredicateHandler;
+import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
+import org.apache.hadoop.hive.serde2.Deserializer;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.lazy.LazyObjectBase;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
@@ -37,6 +39,29 @@ import java.util.Properties;
  * User can optionally implement HiveStoragePredicateHandler for handling filter predicates
  */
 public interface HBaseKeyFactory extends HiveStoragePredicateHandler {
+
+  /**
+   * Gives the storage handler a chance to decompose a predicate.  The storage
+   * handler should analyze the predicate and return the portion of it which
+   * cannot be evaluated during table access.  For example, if the original
+   * predicate is <code>x = 2 AND upper(y)='YUM'</code>, the storage handler
+   * might be able to handle <code>x = 2</code> but leave the "residual"
+   * <code>upper(y)='YUM'</code> for Hive to deal with.  The breakdown
+   * need not be non-overlapping; for example, given the
+   * predicate <code>x LIKE 'a%b'</code>, the storage handler might
+   * be able to evaluate the prefix search <code>x LIKE 'a%'</code>, leaving
+   * <code>x LIKE '%b'</code> as the residual.
+   *
+   * @param jobConf      contains a job configuration matching the one that
+   *                     will later be passed to getRecordReader and getSplits
+   * @param deserializer deserializer which will be used when
+   *                     fetching rows
+   * @param predicate    predicate to be decomposed
+   * @return decomposed form of predicate, or null if no pushdown is
+   * possible at all
+   */
+  @Override
+  HBaseDecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer, ExprNodeDesc predicate);
 
   /**
    * initialize factory with properties

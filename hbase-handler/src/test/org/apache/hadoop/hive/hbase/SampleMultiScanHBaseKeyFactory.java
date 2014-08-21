@@ -79,7 +79,7 @@ public class SampleMultiScanHBaseKeyFactory extends SampleHBaseKeyFactory2 {
    *
    */
   @Override
-  public DecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer, ExprNodeDesc predicate) {
+  public HBaseDecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer, ExprNodeDesc predicate) {
     IndexPredicateAnalyzer analyzer = getIndexPredicateAnalyzer();
 
     List<IndexSearchCondition> searchConds = Lists.newArrayList();
@@ -117,7 +117,7 @@ public class SampleMultiScanHBaseKeyFactory extends SampleHBaseKeyFactory2 {
       throw new RuntimeException(e);
     }
 
-    return new DecomposedPredicate(analyzer.translateSearchConditions(searchConds), scanRanges, (ExprNodeGenericFuncDesc) residual);
+    return new HBaseDecomposedPredicate(analyzer.translateSearchConditions(searchConds), scanRanges, (ExprNodeGenericFuncDesc) residual);
   }
 
   /**

@@ -94,7 +94,7 @@ public class SampleHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
   }
 
   @Override
-  public DecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer,
+  public HBaseDecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer,
       ExprNodeDesc predicate) {
     String keyColName = keyMapping.columnName;
 
@@ -102,20 +102,21 @@ public class SampleHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
     analyzer.allowColumnName(keyColName);
     analyzer.setAcceptsFields(true);
 
-    DecomposedPredicate decomposed = new DecomposedPredicate();
+    ExprNodeGenericFuncDesc pushedPredicate = null;
+    List<HBaseScanRange> pushedPredicateObject = null;
 
     List<IndexSearchCondition> searchConditions = new ArrayList<IndexSearchCondition>();
-    decomposed.residualPredicate =
-        (ExprNodeGenericFuncDesc)analyzer.analyzePredicate(predicate, searchConditions);
+
+    ExprNodeGenericFuncDesc residualPredicate = (ExprNodeGenericFuncDesc) analyzer.analyzePredicate(predicate, searchConditions);
     if (!searchConditions.isEmpty()) {
-      decomposed.pushedPredicate = analyzer.translateSearchConditions(searchConditions);
+      pushedPredicate = analyzer.translateSearchConditions(searchConditions);
       try {
-        decomposed.pushedPredicateObject = Lists.newArrayList(setupFilter(keyColName, searchConditions));
+        pushedPredicateObject = Lists.newArrayList(setupFilter(keyColName, searchConditions));
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
     }
-    return decomposed;
+    return new HBaseDecomposedPredicate(pushedPredicate, pushedPredicateObject, residualPredicate);
   }
 
   protected HBaseScanRange setupFilter(String keyColName, List<IndexSearchCondition> conditions)

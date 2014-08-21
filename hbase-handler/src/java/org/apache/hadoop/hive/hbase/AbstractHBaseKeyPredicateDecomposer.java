@@ -39,40 +39,38 @@ public abstract class AbstractHBaseKeyPredicateDecomposer {
 
   public static final Log LOG = LogFactory.getLog(AbstractHBaseKeyPredicateDecomposer.class);
 
-  public DecomposedPredicate decomposePredicate(String keyColName, ExprNodeDesc predicate) {
+  public HBaseDecomposedPredicate decomposePredicate(String keyColName, ExprNodeDesc predicate) {
     IndexPredicateAnalyzer analyzer = IndexPredicateAnalyzer.createAnalyzer(true);
     analyzer.allowColumnName(keyColName);
     analyzer.setAcceptsFields(true);
     analyzer.setFieldValidator(getFieldValidator());
 
-    DecomposedPredicate decomposed = new DecomposedPredicate();
-
     List<IndexSearchCondition> conditions = new ArrayList<IndexSearchCondition>();
-    decomposed.residualPredicate =
+    ExprNodeGenericFuncDesc residualPredicate =
         (ExprNodeGenericFuncDesc) analyzer.analyzePredicate(predicate, conditions);
+    ExprNodeGenericFuncDesc pushedPredicate = null;
+    List<HBaseScanRange> pushedPredicateObject = null;
+
+
     if (!conditions.isEmpty()) {
-      decomposed.pushedPredicate = analyzer.translateSearchConditions(conditions);
+      pushedPredicate = analyzer.translateSearchConditions(conditions);
       try {
-        decomposed.pushedPredicateObject = Lists.newArrayList(getScanRanges(conditions));
+        pushedPredicateObject = getScanRanges(conditions);
       } catch (Exception e) {
         LOG.warn("Failed to decompose predicates", e);
         return null;
       }
     }
-
-    return decomposed;
+    return new HBaseDecomposedPredicate(pushedPredicate, pushedPredicateObject, residualPredicate);
   }
 
   /**
-   * Get the scan range that specifies the start/stop keys and/or filters to be applied onto the
-   * hbase scan
-   * */
-  protected abstract HBaseScanRange getScanRange(List<IndexSearchCondition> searchConditions)
-      throws Exception;
-
-  protected List<HBaseScanRange> getScanRanges(List<IndexSearchCondition> searchConditions) throws Exception {
-    return ImmutableList.of(getScanRange(searchConditions));
-  }
+   * Get a list of scan ranges specifying start/stop keys and/or filters for one or more HBase scans.
+   *
+   * @param searchConditions
+   * @return
+   */
+  protected abstract List<HBaseScanRange> getScanRanges(List<IndexSearchCondition> searchConditions) throws Exception;
 
   /**
    * Get an optional {@link IndexPredicateAnalyzer.FieldValidator validator}. A validator can be
