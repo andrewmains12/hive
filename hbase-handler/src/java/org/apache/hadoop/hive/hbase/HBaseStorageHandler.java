@@ -490,7 +490,7 @@ public class HBaseStorageHandler extends DefaultStorageHandler
     return keyFactory.decomposePredicate(jobConf, deserializer, predicate);
   }
 
-  public static DecomposedPredicate decomposePredicate(
+  public static HBaseDecomposedPredicate decomposePredicate(
       JobConf jobConf,
       HBaseSerDe hBaseSerDe,
       ExprNodeDesc predicate) {
@@ -520,10 +520,6 @@ public class HBaseStorageHandler extends DefaultStorageHandler
       return null;
     }
 
-    DecomposedPredicate decomposedPredicate = new DecomposedPredicate();
-    decomposedPredicate.pushedPredicate = analyzer.translateSearchConditions(
-      searchConditions);
-    decomposedPredicate.residualPredicate = residualPredicate;
-    return decomposedPredicate;
+    return new HBaseDecomposedPredicate(analyzer.translateSearchConditions(searchConditions), null, residualPredicate);
   }
 }

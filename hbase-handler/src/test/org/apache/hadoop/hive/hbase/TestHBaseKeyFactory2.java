@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.hive.hbase;
 
+import com.google.common.collect.Lists;
 import org.apache.hadoop.hive.ql.index.IndexPredicateAnalyzer;
 import org.apache.hadoop.hive.ql.index.IndexSearchCondition;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
@@ -90,7 +91,7 @@ public class TestHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
   }
 
   @Override
-  public DecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer,
+  public HBaseDecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer,
       ExprNodeDesc predicate) {
     String keyColName = keyMapping.columnName;
 
@@ -98,20 +99,22 @@ public class TestHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
     analyzer.allowColumnName(keyColName);
     analyzer.setAcceptsFields(true);
 
-    DecomposedPredicate decomposed = new DecomposedPredicate();
 
     List<IndexSearchCondition> searchConditions = new ArrayList<IndexSearchCondition>();
-    decomposed.residualPredicate =
+    ExprNodeGenericFuncDesc residualPredicate =
         (ExprNodeGenericFuncDesc)analyzer.analyzePredicate(predicate, searchConditions);
+    ExprNodeGenericFuncDesc pushedPredicate = null;
+    ArrayList<HBaseScanRange> pushedPredicateObject = null;
+
     if (!searchConditions.isEmpty()) {
-      decomposed.pushedPredicate = analyzer.translateSearchConditions(searchConditions);
+      pushedPredicate = analyzer.translateSearchConditions(searchConditions);
       try {
-        decomposed.pushedPredicateObject = setupFilter(keyColName, searchConditions);
+        pushedPredicateObject = Lists.newArrayList(setupFilter(keyColName, searchConditions));
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
     }
-    return decomposed;
+    return new HBaseDecomposedPredicate(pushedPredicate, pushedPredicateObject, residualPredicate);
   }
 
   protected HBaseScanRange setupFilter(String keyColName, List<IndexSearchCondition> conditions)

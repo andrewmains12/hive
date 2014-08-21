@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.google.common.collect.Lists;
 import org.apache.hadoop.hbase.filter.BinaryComparator;
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp;
 import org.apache.hadoop.hbase.filter.Filter;
@@ -25,7 +26,7 @@ import org.apache.hadoop.mapred.JobConf;
 public class TestHBaseKeyFactory3 extends TestHBaseKeyFactory2 {
 
   @Override
-  public DecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer,
+  public HBaseDecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer,
       ExprNodeDesc predicate) {
     TestHBasePredicateDecomposer decomposedPredicate = new TestHBasePredicateDecomposer(keyMapping);
     return decomposedPredicate.decomposePredicate(keyMapping.columnName, predicate);
@@ -43,7 +44,7 @@ class TestHBasePredicateDecomposer extends AbstractHBaseKeyPredicateDecomposer {
   }
 
   @Override
-  public HBaseScanRange getScanRange(List<IndexSearchCondition> searchConditions)
+  public List<HBaseScanRange> getScanRanges(List<IndexSearchCondition> searchConditions)
       throws Exception {
     Map<String, List<IndexSearchCondition>> fieldConds =
         new HashMap<String, List<IndexSearchCondition>>();
@@ -91,7 +92,7 @@ class TestHBasePredicateDecomposer extends AbstractHBaseKeyPredicateDecomposer {
     if (filter != null) {
       range.addFilter(filter);
     }
-    return range;
+    return Lists.newArrayList(range);
   }
 
   private byte[] toBinary(String value, int max, boolean end, boolean nextBA) {
