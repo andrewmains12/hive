@@ -1,5 +1,5 @@
 CREATE TABLE hbase_multiscan(
-  key struct<bucket : string,
+  key struct<bucket : int,
              other_val: string>,
   value string)
   ROW FORMAT SERDE
@@ -17,7 +17,7 @@ CREATE TABLE hbase_multiscan(
 FROM src
 INSERT INTO TABLE hbase_multiscan SELECT
 named_struct(
-        "bucket",  cast(hash(cast(key as int)) % 3 as string),
+        "bucket",  hash(cast(key as int)) % 3,
         "other_val", cast(key as string)),
 cast(value as string);
 

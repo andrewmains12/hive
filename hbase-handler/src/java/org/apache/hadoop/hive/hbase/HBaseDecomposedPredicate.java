@@ -25,6 +25,11 @@ public class HBaseDecomposedPredicate extends HiveStoragePredicateHandler.Decomp
    * @return
    */
   private static <T extends Serializable> Serializable getListAsSerializable(List<T> pushedPredicateObject) {
+
+    if (pushedPredicateObject == null) {
+      return null;
+    }
+
     Serializable serializablePushedPred;
     if (! (pushedPredicateObject instanceof Serializable)) {
       serializablePushedPred = Lists.newArrayList(pushedPredicateObject);
