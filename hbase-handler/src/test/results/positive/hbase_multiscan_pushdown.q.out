@@ -1,5 +1,5 @@
 PREHOOK: query: CREATE TABLE hbase_multiscan(
-  key struct<bucket : string,
+  key struct<bucket : int,
              other_val: string>,
   value string)
   ROW FORMAT SERDE
@@ -16,7 +16,7 @@ PREHOOK: query: CREATE TABLE hbase_multiscan(
 PREHOOK: type: CREATETABLE
 PREHOOK: Output: database:default
 POSTHOOK: query: CREATE TABLE hbase_multiscan(
-  key struct<bucket : string,
+  key struct<bucket : int,
              other_val: string>,
   value string)
   ROW FORMAT SERDE
