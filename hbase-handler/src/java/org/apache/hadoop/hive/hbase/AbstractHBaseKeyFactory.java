@@ -47,7 +47,7 @@ public abstract class AbstractHBaseKeyFactory implements HBaseKeyFactory {
   }
 
   @Override
-  public DecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer, ExprNodeDesc predicate) {
+  public HBaseDecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer, ExprNodeDesc predicate) {
     return HBaseStorageHandler.decomposePredicate(jobConf, (HBaseSerDe) deserializer, predicate);
   }
 }
