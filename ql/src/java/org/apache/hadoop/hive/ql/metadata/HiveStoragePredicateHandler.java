@@ -65,6 +65,8 @@ public interface HiveStoragePredicateHandler {
    */
   public static class DecomposedPredicate {
 
+    public DecomposedPredicate() {}
+
     public DecomposedPredicate(ExprNodeGenericFuncDesc pushedPredicate, Serializable pushedPredicateObject, ExprNodeGenericFuncDesc residualPredicate) {
       this.pushedPredicate = pushedPredicate;
       this.pushedPredicateObject = pushedPredicateObject;
@@ -75,17 +77,17 @@ public interface HiveStoragePredicateHandler {
      * Portion of predicate to be evaluated by storage handler.  Hive
      * will pass this into the storage handler's input format.
      */
-    public final ExprNodeGenericFuncDesc pushedPredicate;
+    public ExprNodeGenericFuncDesc pushedPredicate;
 
     /**
      * Serialized format for filter
      */
-    public final Serializable pushedPredicateObject;
+    public Serializable pushedPredicateObject;
 
     /**
      * Portion of predicate to be post-evaluated by Hive for any rows
      * which are returned by storage handler.
      */
-    public final ExprNodeGenericFuncDesc residualPredicate;
+    public ExprNodeGenericFuncDesc residualPredicate;
   }
 }
