@@ -27,6 +27,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
 import org.junit.Before;
 import org.junit.Test;
@@ -114,4 +115,38 @@ public class TestColumnProjectionUtils {
     ColumnProjectionUtils.setFullyReadColumns(conf);
     assertTrue(ColumnProjectionUtils.isReadAllColumns(conf));
   }
+
+  @Test
+  public void testAppendReadColumnsWithEmptyBuffer() throws Exception {
+    StringBuilder readColumnsBuffer = new StringBuilder();
+    ColumnProjectionUtils.appendReadColumns(readColumnsBuffer, Lists.newArrayList(1, 2));
+
+    assertEquals("1,2", readColumnsBuffer.toString());
+  }
+
+  @Test
+  public void testAppendReadColumnsWithNonEmptyBuffer() throws Exception {
+    StringBuilder readColumnsBuffer = new StringBuilder("0");
+    ColumnProjectionUtils.appendReadColumns(readColumnsBuffer, Lists.newArrayList(1, 2));
+
+    assertEquals("0,1,2", readColumnsBuffer.toString());
+  }
+
+  @Test
+  public void testAppendReadColumnNamesWithEmptyBuffer() throws Exception {
+    StringBuilder buffer = new StringBuilder();
+    ColumnProjectionUtils.appendReadColumnNames(buffer, Lists.newArrayList("col1", "col2"));
+
+    assertEquals("col1,col2", buffer.toString());
+  }
+
+  @Test
+  public void testAppendReadColumnNamesWithNonEmptyBuffer() throws Exception {
+    StringBuilder buffer = new StringBuilder("col0");
+    ColumnProjectionUtils.appendReadColumnNames(buffer, Lists.newArrayList("col1", "col2"));
+
+    assertEquals("col0,col1,col2", buffer.toString());
+  }
+
+
 }

@@ -115,14 +115,13 @@ public final class ColumnProjectionUtils {
     String newConfStr = id;
     if (readColumnsBuffer.length() > 0) {
       readColumnsBuffer.append(StringUtils.COMMA_STR).append(newConfStr);
-    }
-    if (readColumnsBuffer.length() == 0) {
-      readColumnsBuffer.append(READ_COLUMN_IDS_CONF_STR_DEFAULT);
+    } else if (readColumnsBuffer.length() == 0) {
+      readColumnsBuffer.append(newConfStr);
     }
   }
 
-  private static void appendReadColumnNames(StringBuilder readColumnNamesBuffer, List<String> cols) {
-    boolean first = readColumnNamesBuffer.length() > 0;
+  public static void appendReadColumnNames(StringBuilder readColumnNamesBuffer, List<String> cols) {
+    boolean first = readColumnNamesBuffer.length() == 0;
     for(String col: cols) {
       if (first) {
         first = false;
@@ -159,6 +158,8 @@ public final class ColumnProjectionUtils {
     }
   }
 
+  // TODO: all of these append methods are joining strings separated by a comma; use
+  // a common string join method?
   private static void appendReadColumnNames(Configuration conf, List<String> cols) {
     String old = conf.get(READ_COLUMN_NAMES_CONF_STR, "");
     StringBuilder result = new StringBuilder(old);
