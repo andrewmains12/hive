@@ -16,6 +16,7 @@ import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory;
 import org.apache.hadoop.mapred.JobConf;
 
+import javax.management.RuntimeErrorException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -95,7 +96,7 @@ public class TestMultiScanHBaseKeyFactory extends TestHBaseKeyFactory2 {
       throw new IllegalArgumentException("Bucket field " + bucketCol + " must be of type int");
     }
 
-    ArrayList<HBaseScanRange> scanRanges;
+    List<HBaseScanRange> scanRanges;
 
     try {
       // search for a condition already on the bucket
@@ -107,8 +108,9 @@ public class TestMultiScanHBaseKeyFactory extends TestHBaseKeyFactory2 {
         }
       }
 
+      FixedLengthPredicateDecomposer predicateDecomposer = new FixedLengthPredicateDecomposer(keyMapping);
       if (conditionOnBucket) {
-        scanRanges = Lists.newArrayList(super.setupFilter(keyMapping.getColumnName(), searchConds));
+        scanRanges = predicateDecomposer.getScanRanges(searchConds);
       } else {
         scanRanges = Lists.newArrayList();
         List<IndexSearchCondition> searchCondsWithBucket = cons(null, searchConds);
@@ -116,10 +118,12 @@ public class TestMultiScanHBaseKeyFactory extends TestHBaseKeyFactory2 {
         for (int i = 0; i < this.numBuckets; i++) {
           ExprNodeColumnDesc keyColumnDesc = searchConds.get(0).getColumnDesc();
           searchCondsWithBucket.set(0, searchConditionForBucketValue(bucketCol, i, keyColumnDesc));
-          scanRanges.add(super.setupFilter(keyMapping.getColumnName(), searchCondsWithBucket));
+          scanRanges.add(predicateDecomposer.getScanRange(searchCondsWithBucket));
         }
       }
     } catch (IOException e) {
+      throw new RuntimeException(e);
+    } catch (Exception e) {
       throw new RuntimeException(e);
     }
 

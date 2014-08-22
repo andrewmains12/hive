@@ -74,11 +74,11 @@ public class TestHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
     return output.getLength() > 0 ? output.toByteArray() : null;
   }
 
-  private byte[] toBinary(String value, int max, boolean end, boolean nextBA) {
+  private static byte[] toBinary(String value, int max, boolean end, boolean nextBA) {
     return toBinary(value.getBytes(), max, end, nextBA);
   }
 
-  private byte[] toBinary(byte[] value, int max, boolean end, boolean nextBA) {
+  private static byte[] toBinary(byte[] value, int max, boolean end, boolean nextBA) {
     byte[] bytes = new byte[max + 1];
     System.arraycopy(value, 0, bytes, 0, Math.min(value.length, max));
     if (end) {
@@ -93,109 +93,107 @@ public class TestHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
   @Override
   public HBaseDecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer,
       ExprNodeDesc predicate) {
-    String keyColName = keyMapping.columnName;
 
-    IndexPredicateAnalyzer analyzer = IndexPredicateAnalyzer.createAnalyzer(false);
-    analyzer.allowColumnName(keyColName);
-    analyzer.setAcceptsFields(true);
-
-
-    List<IndexSearchCondition> searchConditions = new ArrayList<IndexSearchCondition>();
-    ExprNodeGenericFuncDesc residualPredicate =
-        (ExprNodeGenericFuncDesc)analyzer.analyzePredicate(predicate, searchConditions);
-    ExprNodeGenericFuncDesc pushedPredicate = null;
-    ArrayList<HBaseScanRange> pushedPredicateObject = null;
-
-    if (!searchConditions.isEmpty()) {
-      pushedPredicate = analyzer.translateSearchConditions(searchConditions);
-      try {
-        pushedPredicateObject = Lists.newArrayList(setupFilter(keyColName, searchConditions));
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
-    }
-    return new HBaseDecomposedPredicate(pushedPredicate, pushedPredicateObject, residualPredicate);
+    return new FixedLengthPredicateDecomposer(keyMapping).decomposePredicate(keyMapping.getColumnName(), predicate);
   }
 
-  protected HBaseScanRange setupFilter(String keyColName, List<IndexSearchCondition> conditions)
-      throws IOException {
-    Map<String, List<IndexSearchCondition>> fieldConds =
-        new HashMap<String, List<IndexSearchCondition>>();
-    for (IndexSearchCondition condition : conditions) {
-      assert keyColName.equals(condition.getColumnDesc().getColumn());
-      String fieldName = condition.getFields()[0];
-      List<IndexSearchCondition> fieldCond = fieldConds.get(fieldName);
-      if (fieldCond == null) {
-        fieldConds.put(fieldName, fieldCond = new ArrayList<IndexSearchCondition>());
-      }
-      fieldCond.add(condition);
+  public static class FixedLengthPredicateDecomposer extends AbstractHBaseKeyPredicateDecomposer {
+
+    private final ColumnMappings.ColumnMapping keyMapping;
+
+    public FixedLengthPredicateDecomposer(ColumnMappings.ColumnMapping keyMapping) {
+      this.keyMapping = keyMapping;
     }
-    HBaseScanRange range = new HBaseScanRange();
 
-    ByteArrayOutputStream startRow = new ByteArrayOutputStream();
-    ByteArrayOutputStream stopRow = new ByteArrayOutputStream();
-
-    StructTypeInfo type = (StructTypeInfo) keyMapping.columnType;
-    for (String name : type.getAllStructFieldNames()) {
-      List<IndexSearchCondition> fieldCond = fieldConds.get(name);
-      if (fieldCond == null || fieldCond.size() > 2) {
-        continue;
+    public HBaseScanRange getScanRange(List<IndexSearchCondition> conditions) throws IOException {
+      Map<String, List<IndexSearchCondition>> fieldConds =
+          new HashMap<String, List<IndexSearchCondition>>();
+      for (IndexSearchCondition condition : conditions) {
+        assert keyMapping.getColumnName().equals(condition.getColumnDesc().getColumn());
+        String fieldName = condition.getFields()[0];
+        List<IndexSearchCondition> fieldCond = fieldConds.get(fieldName);
+        if (fieldCond == null) {
+          fieldConds.put(fieldName, fieldCond = new ArrayList<IndexSearchCondition>());
+        }
+        fieldCond.add(condition);
       }
-      byte[] startElement = null;
-      byte[] stopElement = null;
-      for (IndexSearchCondition condition : fieldCond) {
-        if (condition.getConstantDesc().getValue() == null) {
+      HBaseScanRange range = new HBaseScanRange();
+
+      ByteArrayOutputStream startRow = new ByteArrayOutputStream();
+      ByteArrayOutputStream stopRow = new ByteArrayOutputStream();
+
+      StructTypeInfo type = (StructTypeInfo) keyMapping.columnType;
+      for (String name : type.getAllStructFieldNames()) {
+        List<IndexSearchCondition> fieldCond = fieldConds.get(name);
+        if (fieldCond == null || fieldCond.size() > 2) {
           continue;
         }
-        String comparisonOp = condition.getComparisonOp();
-        String constantVal = String.valueOf(condition.getConstantDesc().getValue());
+        byte[] startElement = null;
+        byte[] stopElement = null;
+        for (IndexSearchCondition condition : fieldCond) {
+          if (condition.getConstantDesc().getValue() == null) {
+            continue;
+          }
+          String comparisonOp = condition.getComparisonOp();
+          String constantVal = String.valueOf(condition.getConstantDesc().getValue());
 
-        if (comparisonOp.endsWith("UDFOPEqual")) {
-          startElement = toBinary(constantVal, FIXED_LENGTH, false, false);
-          stopElement = toBinary(constantVal, FIXED_LENGTH, true, true);
-        } else if (comparisonOp.endsWith("UDFOPEqualOrGreaterThan")) {
-          startElement = toBinary(constantVal, FIXED_LENGTH, false, false);
-        } else if (comparisonOp.endsWith("UDFOPGreaterThan")) {
-          startElement = toBinary(constantVal, FIXED_LENGTH, false, true);
-        } else if (comparisonOp.endsWith("UDFOPEqualOrLessThan")) {
-          stopElement = toBinary(constantVal, FIXED_LENGTH, true, false);
-        } else if (comparisonOp.endsWith("UDFOPLessThan")) {
-          stopElement = toBinary(constantVal, FIXED_LENGTH, true, true);
-        } else {
-          throw new IOException(comparisonOp + " is not a supported comparison operator");
-        }
-      }
-      if (startRow != null) {
-        if (startElement != null) {
-          startRow.write(startElement);
-        } else {
-          if (startRow.size() > 0) {
-            range.setStartRow(startRow.toByteArray());
+          if (comparisonOp.endsWith("UDFOPEqual")) {
+            startElement = toBinary(constantVal, FIXED_LENGTH, false, false);
+            stopElement = toBinary(constantVal, FIXED_LENGTH, true, true);
+          } else if (comparisonOp.endsWith("UDFOPEqualOrGreaterThan")) {
+            startElement = toBinary(constantVal, FIXED_LENGTH, false, false);
+          } else if (comparisonOp.endsWith("UDFOPGreaterThan")) {
+            startElement = toBinary(constantVal, FIXED_LENGTH, false, true);
+          } else if (comparisonOp.endsWith("UDFOPEqualOrLessThan")) {
+            stopElement = toBinary(constantVal, FIXED_LENGTH, true, false);
+          } else if (comparisonOp.endsWith("UDFOPLessThan")) {
+            stopElement = toBinary(constantVal, FIXED_LENGTH, true, true);
+          } else {
+            throw new IOException(comparisonOp + " is not a supported comparison operator");
           }
-          startRow = null;
         }
-      }
-      if (stopRow != null) {
-        if (stopElement != null) {
-          stopRow.write(stopElement);
-        } else {
-          if (stopRow.size() > 0) {
-            range.setStopRow(stopRow.toByteArray());
+        if (startRow != null) {
+          if (startElement != null) {
+            startRow.write(startElement);
+          } else {
+            if (startRow.size() > 0) {
+              range.setStartRow(startRow.toByteArray());
+            }
+            startRow = null;
           }
-          stopRow = null;
+        }
+        if (stopRow != null) {
+          if (stopElement != null) {
+            stopRow.write(stopElement);
+          } else {
+            if (stopRow.size() > 0) {
+              range.setStopRow(stopRow.toByteArray());
+            }
+            stopRow = null;
+          }
+        }
+        if (startElement == null && stopElement == null) {
+          break;
         }
       }
-      if (startElement == null && stopElement == null) {
-        break;
+      if (startRow != null && startRow.size() > 0) {
+        range.setStartRow(startRow.toByteArray());
       }
+      if (stopRow != null && stopRow.size() > 0) {
+        range.setStopRow(stopRow.toByteArray());
+      }
+      return range;
     }
-    if (startRow != null && startRow.size() > 0) {
-      range.setStartRow(startRow.toByteArray());
+    /**
+     * Get a list of scan ranges specifying start/stop keys and/or filters for one or more HBase scans.
+     *
+     * @param conditions
+     * @return
+     */
+    @Override
+    protected List<HBaseScanRange> getScanRanges(List<IndexSearchCondition> conditions) throws Exception {
+      return Lists.newArrayList(getScanRange(conditions));
     }
-    if (stopRow != null && stopRow.size() > 0) {
-      range.setStopRow(stopRow.toByteArray());
-    }
-    return range;
   }
 
   private static class FixedLengthed implements LazyObjectBase {
