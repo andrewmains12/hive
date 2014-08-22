@@ -41,11 +41,11 @@
   <dependencies>
     <!-- dependencies are always listed in sorted order by groupId, artifectId -->
     <!-- test intra-project -->
-    <!-- <dependency> -->
-    <!--   <groupId>org.apache.accumulo</groupId> -->
-    <!--   <artifactId>accumulo-minicluster</artifactId> -->
-    <!--   <scope>test</scope> -->
-    <!-- </dependency> -->
+    <dependency>
+      <groupId>org.apache.accumulo</groupId>
+      <artifactId>accumulo-minicluster</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.apache.hive</groupId>
       <artifactId>hive-ant</artifactId>
@@ -87,16 +87,6 @@
       <groupId>org.apache.hive</groupId>
       <artifactId>hive-it-util</artifactId>
       <version>${project.version}</version>
-      <exclusions>
-        <exclusion>
-          <groupId>org.apache.accumulo</groupId>
-          <artifactId>accumulo-minicluster</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.apache.hive</groupId>
-          <artifactId>hive-accumulo-handler</artifactId>
-        </exclusion>
-      </exclusions>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -340,31 +330,31 @@
           <classifier>tests</classifier>
           <scope>test</scope>
         </dependency>
-        <dependency>
-          <groupId>org.apache.tez</groupId>
+        <dependency> 
+          <groupId>org.apache.tez</groupId> 
           <artifactId>tez-tests</artifactId>
           <version>${tez.version}</version>
           <type>test-jar</type>
         </dependency>
-        <dependency>
+        <dependency> 
           <groupId>org.apache.tez</groupId>
           <artifactId>tez-api</artifactId>
           <version>${tez.version}</version>
           <scope>test</scope>
         </dependency>
-        <dependency>
+        <dependency> 
           <groupId>org.apache.tez</groupId>
           <artifactId>tez-runtime-library</artifactId>
           <version>${tez.version}</version>
           <scope>test</scope>
         </dependency>
-        <dependency>
+        <dependency> 
           <groupId>org.apache.tez</groupId>
           <artifactId>tez-mapreduce</artifactId>
           <version>${tez.version}</version>
           <scope>test</scope>
         </dependency>
-        <dependency>
+        <dependency> 
           <groupId>org.apache.tez</groupId>
           <artifactId>tez-dag</artifactId>
           <version>${tez.version}</version>
@@ -535,7 +525,7 @@
                               clusterMode="tez"
                               runDisabled="${run_disabled}"
                               hiveConfDir="${basedir}/${hive.path.to.root}/data/conf/tez"
-                              resultsDirectory="${basedir}/${hive.path.to.root}/ql/src/test/results/clientpositive/tez"
+                              resultsDirectory="${basedir}/${hive.path.to.root}/ql/src/test/results/clientpositive/tez" 
                               className="TestMiniTezCliDriver"
                               logFile="${project.build.directory}/testminitezclidrivergen.log"
                               logDirectory="${project.build.directory}/qfile-results/clientpositive/"
