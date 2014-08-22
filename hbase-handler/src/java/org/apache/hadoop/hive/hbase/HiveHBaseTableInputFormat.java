@@ -224,7 +224,7 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
       throw new IOException(e);
     }
 
-    int iKey = columnMappings.getKeyIndex();
+    // TODO: do we always have a keyMapping?
     ColumnMapping keyMapping = columnMappings.getKeyMapping();
 
     String filterObjectSerialized = jobConf.get(TableScanDesc.FILTER_OBJECT_CONF_STR);
@@ -239,20 +239,17 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
     ExprNodeGenericFuncDesc filterExpr = filterExprSerialized != null ?
         Utilities.deserializeExpression(filterExprSerialized) : null;
 
-    String colName = jobConf.get(serdeConstants.LIST_COLUMNS).split(",")[iKey];
-    String colType = jobConf.get(serdeConstants.LIST_COLUMN_TYPES).split(",")[iKey];
-
     boolean isKeyBinary = getStorageFormatOfKey(keyMapping.mappingSpec,
         jobConf.get(HBaseSerDe.HBASE_TABLE_DEFAULT_STORAGE_TYPE, "string"));
 
-    return createFilterScans(ranges, filterExpr, colName, colType, isKeyBinary, jobConf);
+    return createFilterScans(ranges, filterExpr, keyMapping, isKeyBinary, jobConf);
   }
 
   /**
    * Perform the actual conversion from pushed objects (deserialized from the JobConf)
    * to a List<Scan>
    */
-  private List<Scan> createFilterScans(List<HBaseScanRange> ranges, ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyBinary, JobConf jobConf) throws IOException {
+  private List<Scan> createFilterScans(List<HBaseScanRange> ranges, ExprNodeGenericFuncDesc filterExpr, ColumnMapping keyMapping, boolean isKeyBinary, JobConf jobConf) throws IOException {
 
     // TODO: assert iKey is HBaseSerDe#HBASE_KEY_COL
 
@@ -270,8 +267,9 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
       }
       return rtn;
     } else if (filterExpr != null) {
-      return ImmutableList.of(createScanFromFilterExpr(filterExpr, keyColName, keyColType, isKeyBinary));
+      return ImmutableList.of(createScanFromFilterExpr(filterExpr, keyMapping, isKeyBinary));
     } else {
+      // nothing pushed; just return an unbounded scan.
       return ImmutableList.of(new Scan());
     }
   }
@@ -279,15 +277,13 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
   /**
    * Create a scan with the filters represented by filterExpr.
    * @param filterExpr
-   * @param keyColName
-   * @param keyColType
    * @param isKeyBinary
    * @return
    * @throws IOException
    */
-  private Scan createScanFromFilterExpr(ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyBinary) throws IOException {
+  private Scan createScanFromFilterExpr(ExprNodeGenericFuncDesc filterExpr, ColumnMapping keyMapping, boolean isKeyBinary) throws IOException {
     Scan scan = new Scan();
-    IndexPredicateAnalyzer analyzer = newIndexPredicateAnalyzer(keyColName, keyColType, isKeyBinary);
+    IndexPredicateAnalyzer analyzer = newIndexPredicateAnalyzer(keyMapping.getColumnName(), keyMapping.getColumnType(), isKeyBinary);
 
     List<IndexSearchCondition> searchConditions =
       new ArrayList<IndexSearchCondition>();
