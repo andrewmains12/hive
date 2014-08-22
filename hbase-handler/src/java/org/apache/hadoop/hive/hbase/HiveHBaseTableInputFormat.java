@@ -20,6 +20,7 @@ package org.apache.hadoop.hive.hbase;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -51,6 +52,8 @@ import org.apache.hadoop.hive.serde2.lazy.LazyUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.LongObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
 import org.apache.hadoop.io.BooleanWritable;
@@ -108,7 +111,15 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
    * @return converted scan
    */
   private List<Scan> createFilterScans(JobConf jobConf) throws IOException {
+    String filterObjectSerialized = jobConf.get(TableScanDesc.FILTER_OBJECT_CONF_STR);
+    String filterExprSerialized = jobConf.get(TableScanDesc.FILTER_EXPR_CONF_STR);
 
+    // If nothing was pushed, exit early--some other things might not be present as well.
+    if (filterObjectSerialized == null && filterExprSerialized == null) {
+      return ImmutableList.of(new Scan());
+    }
+
+    String hbaseTableName = jobConf.get(HBaseSerDe.HBASE_TABLE_NAME);
     String hbaseColumnsMapping = jobConf.get(HBaseSerDe.HBASE_COLUMNS_MAPPING);
     boolean doColumnRegexMatching = jobConf.getBoolean(HBaseSerDe.HBASE_COLUMNS_REGEX_MATCHING, true);
 
@@ -116,9 +127,18 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
       throw new IOException("hbase.columns.mapping required for HBase Table.");
     }
 
+
+    String listColumnsString = jobConf.get(serdeConstants.LIST_COLUMNS);
+    String listColumnTypeString = jobConf.get(serdeConstants.LIST_COLUMN_TYPES);
+
+    List<String> columns = Arrays.asList(listColumnsString.split(","));
+    List<TypeInfo> columnTypes = TypeInfoUtils.getTypeInfosFromTypeString(listColumnTypeString);
+
+    String defaultStorageType = jobConf.get(HBaseSerDe.HBASE_TABLE_DEFAULT_STORAGE_TYPE, "string");
+
     ColumnMappings columnMappings;
     try {
-      columnMappings = HBaseSerDe.parseColumnsMapping(hbaseColumnsMapping,doColumnRegexMatching);
+      columnMappings = getColumnMappings(hbaseColumnsMapping, doColumnRegexMatching, columns, columnTypes, defaultStorageType);
     } catch (SerDeException e) {
       throw new IOException(e);
     }
@@ -128,8 +148,6 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
 
     int iTimestamp = columnMappings.getTimestampIndex();
 
-    String filterObjectSerialized = jobConf.get(TableScanDesc.FILTER_OBJECT_CONF_STR);
-
     List<HBaseScanRange> ranges;
     if (filterObjectSerialized != null) {
       ranges = (List<HBaseScanRange>) Utilities.deserializeObject(filterObjectSerialized,
@@ -137,8 +155,6 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
     } else {
       ranges = null;
     }
-
-    String filterExprSerialized = jobConf.get(TableScanDesc.FILTER_EXPR_CONF_STR);
 
     ExprNodeGenericFuncDesc filterExpr = filterExprSerialized != null ?
         Utilities.deserializeExpression(filterExprSerialized) : null;
@@ -152,8 +168,25 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
     if (iTimestamp >= 0) {
       tsColName = jobConf.get(serdeConstants.LIST_COLUMNS).split(",")[iTimestamp];
     }
-
     return createFilterScans(ranges, filterExpr, colName, keyColType, isKeyBinary, tsColName, jobConf);
+  }
+
+  private ColumnMappings getColumnMappings(String hbaseColumnMappings,
+                                           boolean doColumnRegexMatching,
+                                           List<String> columnsList,
+                                           List<TypeInfo> columnTypeList,
+                                           String defaultStorageType
+                                           ) throws SerDeException {
+    ColumnMappings columnMappings = HBaseSerDe.parseColumnsMapping(hbaseColumnMappings, doColumnRegexMatching);
+
+    // Only non virtual columns are mapped, and all of the virtual columns ought to be at the end. Therefore,
+    // take only as many columns as there are in the mapping.
+    List<String> nonVirtualColumns = columnsList.subList(0, columnMappings.size());
+    List<TypeInfo> nonVirtualColumnTypes = columnTypeList.subList(0, columnMappings.size());
+    columnMappings.setHiveColumnDescription(HBaseSerDe.class.getName(), nonVirtualColumns, nonVirtualColumnTypes);
+    columnMappings.parseColumnStorageTypes(defaultStorageType);
+
+    return columnMappings;
   }
 
   /**
