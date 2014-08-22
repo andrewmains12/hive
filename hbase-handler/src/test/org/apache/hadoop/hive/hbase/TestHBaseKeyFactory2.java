@@ -93,9 +93,32 @@ public class TestHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
   @Override
   public HBaseDecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer,
       ExprNodeDesc predicate) {
+    String keyColName = keyMapping.columnName;
 
-    return new FixedLengthPredicateDecomposer(keyMapping).decomposePredicate(keyMapping.getColumnName(), predicate);
+    IndexPredicateAnalyzer analyzer = IndexPredicateAnalyzer.createAnalyzer(false);
+    analyzer.allowColumnName(keyColName);
+    analyzer.setAcceptsFields(true);
+
+
+    List<IndexSearchCondition> searchConditions = new ArrayList<IndexSearchCondition>();
+
+    ExprNodeGenericFuncDesc pushedPredicate = null;
+    List<HBaseScanRange> pushedPredicateObject = null;
+    ExprNodeGenericFuncDesc residualPredicate = (ExprNodeGenericFuncDesc) analyzer.analyzePredicate(predicate, searchConditions);
+    if (!searchConditions.isEmpty()) {
+      pushedPredicate = analyzer.translateSearchConditions(searchConditions);
+      try {
+        pushedPredicateObject = new FixedLengthPredicateDecomposer(keyMapping).getScanRanges(searchConditions);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    }
+
+    return new HBaseDecomposedPredicate(pushedPredicate, pushedPredicateObject, residualPredicate);
   }
+
 
   public static class FixedLengthPredicateDecomposer extends AbstractHBaseKeyPredicateDecomposer {
 

@@ -15,6 +15,7 @@ PREHOOK: query: CREATE TABLE hbase_multiscan(
   'hbase.table.name'='mscan2',   'hive.hbase.multiscan.num_buckets'='3')
 PREHOOK: type: CREATETABLE
 PREHOOK: Output: database:default
+PREHOOK: Output: default@hbase_multiscan
 POSTHOOK: query: CREATE TABLE hbase_multiscan(
   key struct<bucket : int,
              other_val: string>,
