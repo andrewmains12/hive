@@ -44,6 +44,7 @@ import org.apache.hadoop.hbase.mapred.TableOutputFormat;
 import org.apache.hadoop.hbase.mapreduce.TableInputFormatBase;
 import org.apache.hadoop.hbase.mapreduce.TableMapReduceUtil;
 import org.apache.hadoop.hbase.security.User;
+import org.apache.hadoop.hbase.security.UserProvider;
 import org.apache.hadoop.hbase.security.token.AuthenticationTokenIdentifier;
 import org.apache.hadoop.hbase.security.token.AuthenticationTokenSelector;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -519,8 +520,12 @@ public class HBaseStorageHandler extends DefaultStorageHandler
 
       // Get credentials using the configuration instance which has HBase properties
       JobConf hbaseJobConf = new JobConf(getConf());
-      org.apache.hadoop.hbase.mapred.TableMapReduceUtil.initCredentials(hbaseJobConf);
-      ShimLoader.getHadoopShims().mergeCredentials(jobConf, hbaseJobConf);
+
+      UserProvider userProvider = UserProvider.instantiate(getConf());
+      if (userProvider.isHadoopSecurityEnabled() && userProvider.isHBaseSecurityEnabled()) {
+        org.apache.hadoop.hbase.mapred.TableMapReduceUtil.initCredentials(hbaseJobConf);
+        ShimLoader.getHadoopShims().mergeCredentials(jobConf, hbaseJobConf);
+      }
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
