@@ -102,90 +102,6 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
   }
 
   /**
-   * Push the configured columns to be read into scan, reading all necessary values from jobConf and delegating
-   * to {@link #pushScanColumns(org.apache.hadoop.hbase.client.Scan, ColumnMappings, java.util.List, boolean)}
-   * @param scan
-   * @param jobConf
-   * @throws IOException
-   */
-  private void pushScanColumns(Scan scan, JobConf jobConf) throws IOException {
-    String hbaseColumnsMapping = jobConf.get(HBaseSerDe.HBASE_COLUMNS_MAPPING);
-    boolean doColumnRegexMatching = jobConf.getBoolean(HBaseSerDe.HBASE_COLUMNS_REGEX_MATCHING, true);
-    ColumnMappings columnMappings;
-
-    try {
-      columnMappings = HBaseSerDe.parseColumnsMapping(hbaseColumnsMapping, doColumnRegexMatching);
-    } catch (SerDeException e) {
-      throw new IOException(e);
-    }
-
-    List<Integer> readColIDs = ColumnProjectionUtils.getReadColumnIDs(jobConf);
-
-    boolean readAllColumns = ColumnProjectionUtils.isReadAllColumns(jobConf);
-
-    pushScanColumns(scan, columnMappings, readColIDs, readAllColumns);
-  }
-
-  private void pushScanColumns(Scan scan, ColumnMappings columnMappings, List<Integer> readColIDs, boolean readAllColumns) throws IOException {
-
-
-    if (columnMappings.size() < readColIDs.size()) {
-      throw new IOException("Cannot read more columns than the given table contains.");
-    }
-
-    boolean empty = true;
-
-    // The list of families that have been added to the scan
-    List<String> addedFamilies = new ArrayList<String>();
-
-    if (!readAllColumns) {
-      ColumnMapping[] columnsMapping = columnMappings.getColumnsMapping();
-      for (int i : readColIDs) {
-        ColumnMapping colMap = columnsMapping[i];
-        if (colMap.hbaseRowKey) {
-          continue;
-        }
-
-        if (colMap.qualifierName == null) {
-          scan.addFamily(colMap.familyNameBytes);
-          addedFamilies.add(colMap.familyName);
-        } else {
-          if(!addedFamilies.contains(colMap.familyName)){
-            // add only if the corresponding family has not already been added
-            scan.addColumn(colMap.familyNameBytes, colMap.qualifierNameBytes);
-          }
-        }
-
-        empty = false;
-      }
-    }
-
-    // The HBase table's row key maps to a Hive table column. In the corner case when only the
-    // row key column is selected in Hive, the HBase Scan will be empty i.e. no column family/
-    // column qualifier will have been added to the scan. We arbitrarily add at least one column
-    // to the HBase scan so that we can retrieve all of the row keys and return them as the Hive
-    // tables column projection.
-    if (empty) {
-      for (ColumnMapping colMap: columnMappings) {
-        if (colMap.hbaseRowKey) {
-          continue;
-        }
-
-        if (colMap.qualifierName == null) {
-          scan.addFamily(colMap.familyNameBytes);
-        } else {
-          scan.addColumn(colMap.familyNameBytes, colMap.qualifierNameBytes);
-        }
-
-        if (!readAllColumns) {
-          break;
-        }
-      }
-    }
-  }
-
-
-  /**
    * Converts a filter (which has been pushed down from Hive's optimizer)
    * into corresponding restrictions on the HBase scan.  The
    * filter should already be in a form which can be fully converted.
@@ -526,7 +442,7 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
     // same as in getRecordReader?
 
     for (Scan scan : scans) {
-      pushScanColumns(scan, jobConf);
+      HiveHBaseInputFormatUtil.pushScanColumns(jobConf, scan);
       configureScan(scan, jobConf);
     }
 
