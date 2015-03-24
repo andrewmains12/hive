@@ -114,14 +114,17 @@ public final class ColumnProjectionUtils {
   }
 
   public static void appendReadColumns(StringBuilder readColumnsBuffer, List<Integer> ids) {
-    String id = toReadColumnIDString(ids);
-    String newConfStr = id;
-    if (readColumnsBuffer.length() > 0) {
-      readColumnsBuffer.append(StringUtils.COMMA_STR).append(newConfStr);
-    }
-    if (readColumnsBuffer.length() == 0) {
+    if (ids.isEmpty()) {
       readColumnsBuffer.append(READ_COLUMN_IDS_CONF_STR_DEFAULT);
+      return;
     }
+
+    // at least one column to append
+    String newConfStr = toReadColumnIDString(ids);
+    if (readColumnsBuffer.length() > 0) {
+      readColumnsBuffer.append(StringUtils.COMMA_STR);
+    }
+    readColumnsBuffer.append(newConfStr);
   }
 
   private static void appendReadColumnNames(StringBuilder readColumnNamesBuffer, List<String> cols) {
