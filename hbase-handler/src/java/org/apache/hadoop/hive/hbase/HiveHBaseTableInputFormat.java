@@ -149,14 +149,12 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
     boolean isKeyBinary = HiveHBaseInputFormatUtil.getStorageFormatOfKey(keyMapping.mappingSpec,
         jobConf.get(HBaseSerDe.HBASE_TABLE_DEFAULT_STORAGE_TYPE, "string"));
 
-    boolean isKeyComparable = isKeyBinary || keyColType.equalsIgnoreCase("string");
-
     String tsColName = null;
     if (iTimestamp >= 0) {
       tsColName = jobConf.get(serdeConstants.LIST_COLUMNS).split(",")[iTimestamp];
     }
 
-    return createFilterScans(ranges, filterExpr, colName, keyColType, isKeyComparable, tsColName, jobConf);
+    return createFilterScans(ranges, filterExpr, colName, keyColType, isKeyBinary, tsColName, jobConf);
   }
 
   /**
@@ -166,7 +164,7 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
    *
    * @return converted scan
    */
-  private List<Scan> createFilterScans(List<HBaseScanRange> ranges, ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyComparable, String tsColName, JobConf jobConf) throws IOException {
+  private List<Scan> createFilterScans(List<HBaseScanRange> ranges, ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyBinary, String tsColName, JobConf jobConf) throws IOException {
 
     // TODO: assert iKey is HBaseSerDe#HBASE_KEY_COL
 
@@ -187,7 +185,7 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
     } else if (filterExpr == null) {
       return ImmutableList.of(new Scan());
     } else {
-      return ImmutableList.of(createScanFromFilterExpr(filterExpr, keyColName, keyColType, isKeyComparable, tsColName));
+      return ImmutableList.of(createScanFromFilterExpr(filterExpr, keyColName, keyColType, isKeyBinary, tsColName));
     }
   }
 
@@ -197,13 +195,14 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
    * @param filterExpr
    * @param keyColName
    * @param keyColType
-   * @param isKeyComparable
+   * @param isKeyBinary
    * @return
    * @throws IOException
    */
-  private Scan createScanFromFilterExpr(ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyComparable, String tsColName) throws IOException {
+  private Scan createScanFromFilterExpr(ExprNodeGenericFuncDesc filterExpr, String keyColName, String keyColType, boolean isKeyBinary, String tsColName) throws IOException {
     Scan scan = new Scan();
 
+    boolean isKeyComparable = isKeyBinary || keyColType.equals("string");
     IndexPredicateAnalyzer analyzer =
         newIndexPredicateAnalyzer(keyColName, isKeyComparable, tsColName);
 
@@ -224,7 +223,7 @@ public class HiveHBaseTableInputFormat extends HiveMultiTableInputFormatBase
     Map<String, List<IndexSearchCondition>> split = HiveHBaseInputFormatUtil.decompose(conditions);
     List<IndexSearchCondition> keyConditions = split.get(keyColName);
     if (keyConditions != null && !keyConditions.isEmpty()) {
-      setupKeyRange(scan, keyConditions, isKeyComparable);
+      setupKeyRange(scan, keyConditions, isKeyBinary);
     }
     List<IndexSearchCondition> tsConditions = split.get(tsColName);
     if (tsConditions != null && !tsConditions.isEmpty()) {
