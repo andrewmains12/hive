@@ -71,6 +71,7 @@
     <test.tmp.dir.uri>file://${test.tmp.dir}</test.tmp.dir.uri>
     <test.warehouse.dir>${project.build.directory}/warehouse</test.warehouse.dir>
     <test.warehouse.scheme>pfile://</test.warehouse.scheme>
+    <test.redirectTestOutputToFile>true</test.redirectTestOutputToFile>
 
     <!-- To add additional exclude patterns set this property -->
     <test.excludes.additional></test.excludes.additional>
@@ -833,7 +834,7 @@
             <exclude>**/TestHiveMetaStore.java</exclude>
             <exclude>${test.excludes.additional}</exclude>
           </excludes>
-          <redirectTestOutputToFile>true</redirectTestOutputToFile>
+          <redirectTestOutputToFile>${test.redirectTestOutputToFile}</redirectTestOutputToFile>
           <reuseForks>false</reuseForks>
           <failIfNoTests>false</failIfNoTests>
           <argLine>-Xmx2048m -XX:MaxPermSize=512m</argLine>
