@@ -88,12 +88,6 @@ public class SampleMultiScanHBaseKeyFactory extends SampleHBaseKeyFactory2 {
 
     StructTypeInfo keyColumnType = (StructTypeInfo) keyMapping.columnType;
     String bucketCol = keyColumnType.getAllStructFieldNames().get(0);
-    TypeInfo bucketTypeInfo = keyColumnType.getStructFieldTypeInfo(bucketCol);
-
-    if (! (bucketTypeInfo.getCategory() == ObjectInspector.Category.PRIMITIVE &&
-        ((PrimitiveTypeInfo) bucketTypeInfo).getPrimitiveCategory() == PrimitiveObjectInspector.PrimitiveCategory.INT)) {
-      throw new IllegalArgumentException("Bucket field " + bucketCol + " must be of type int");
-    }
 
     ArrayList<HBaseScanRange> scanRanges;
 
