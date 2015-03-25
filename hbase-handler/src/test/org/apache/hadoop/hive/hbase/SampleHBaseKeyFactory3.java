@@ -76,39 +76,9 @@ class SampleHBasePredicateDecomposer extends AbstractHBaseKeyPredicateDecomposer
     Filter filter = null;
     HBaseScanRange range = new HBaseScanRange();
 
-    StructTypeInfo type = (StructTypeInfo) keyMapping.columnType;
-    for (String name : type.getAllStructFieldNames()) {
-      List<IndexSearchCondition> fieldCond = fieldConds.get(name);
-      if (fieldCond == null || fieldCond.size() > 2) {
-        continue;
-      }
-      for (IndexSearchCondition condition : fieldCond) {
-        if (condition.getConstantDesc().getValue() == null) {
-          continue;
-        }
-        String comparisonOp = condition.getComparisonOp();
-        String constantVal = String.valueOf(condition.getConstantDesc().getValue());
+    // xxx TODO: bring back addition of a filter here. The previous implementation was broken; it doesn't consider the possibility of conditions on multiple
+    // fields in the struct, and simply ends up using the last one.
 
-        byte[] valueAsBytes = toBinary(constantVal, FIXED_LENGTH, false, false);
-
-        if (comparisonOp.endsWith("UDFOPEqual")) {
-          filter = new RowFilter(CompareOp.EQUAL, new BinaryComparator(valueAsBytes));
-        } else if (comparisonOp.endsWith("UDFOPEqualOrGreaterThan")) {
-          filter = new RowFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(valueAsBytes));
-        } else if (comparisonOp.endsWith("UDFOPGreaterThan")) {
-          filter = new RowFilter(CompareOp.GREATER, new BinaryComparator(valueAsBytes));
-        } else if (comparisonOp.endsWith("UDFOPEqualOrLessThan")) {
-          filter = new RowFilter(CompareOp.LESS_OR_EQUAL, new BinaryComparator(valueAsBytes));
-        } else if (comparisonOp.endsWith("UDFOPLessThan")) {
-          filter = new RowFilter(CompareOp.LESS, new BinaryComparator(valueAsBytes));
-        } else {
-          throw new IOException(comparisonOp + " is not a supported comparison operator");
-        }
-      }
-    }
-    if (filter != null) {
-      range.addFilter(filter);
-    }
     return range;
   }
 
