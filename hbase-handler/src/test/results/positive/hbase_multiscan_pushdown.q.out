@@ -9,12 +9,13 @@ PREHOOK: query: CREATE TABLE hbase_multiscan(
   WITH SERDEPROPERTIES (
   'serialization.format'='1',
   'hbase.columns.mapping'=':key,cf:string',
-  'hbase.composite.key.factory'='org.apache.hadoop.hive.hbase.TestMultiScanHBaseKeyFactory'
+  'hbase.composite.key.factory'='org.apache.hadoop.hive.hbase.SampleMultiScanHBaseKeyFactory'
   )
   TBLPROPERTIES (
   'hbase.table.name'='mscan2',   'hive.hbase.multiscan.num_buckets'='3')
 PREHOOK: type: CREATETABLE
 PREHOOK: Output: database:default
+PREHOOK: Output: default@hbase_multiscan
 POSTHOOK: query: CREATE TABLE hbase_multiscan(
   key struct<bucket : string,
              other_val: string>,
@@ -26,7 +27,7 @@ POSTHOOK: query: CREATE TABLE hbase_multiscan(
   WITH SERDEPROPERTIES (
   'serialization.format'='1',
   'hbase.columns.mapping'=':key,cf:string',
-  'hbase.composite.key.factory'='org.apache.hadoop.hive.hbase.TestMultiScanHBaseKeyFactory'
+  'hbase.composite.key.factory'='org.apache.hadoop.hive.hbase.SampleMultiScanHBaseKeyFactory'
   )
   TBLPROPERTIES (
   'hbase.table.name'='mscan2',   'hive.hbase.multiscan.num_buckets'='3')
