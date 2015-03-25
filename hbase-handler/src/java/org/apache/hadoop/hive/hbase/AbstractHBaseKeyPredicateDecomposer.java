@@ -20,6 +20,8 @@ package org.apache.hadoop.hive.hbase;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.ql.index.IndexPredicateAnalyzer;
@@ -51,7 +53,7 @@ public abstract class AbstractHBaseKeyPredicateDecomposer {
     if (!conditions.isEmpty()) {
       decomposed.pushedPredicate = analyzer.translateSearchConditions(conditions);
       try {
-        decomposed.pushedPredicateObject = getScanRange(conditions);
+        decomposed.pushedPredicateObject = Lists.newArrayList(getScanRanges(conditions));
       } catch (Exception e) {
         LOG.warn("Failed to decompose predicates", e);
         return null;
@@ -67,6 +69,10 @@ public abstract class AbstractHBaseKeyPredicateDecomposer {
    * */
   protected abstract HBaseScanRange getScanRange(List<IndexSearchCondition> searchConditions)
       throws Exception;
+
+  protected List<HBaseScanRange> getScanRanges(List<IndexSearchCondition> searchConditions) throws Exception {
+    return ImmutableList.of(getScanRange(searchConditions));
+  }
 
   /**
    * Get an optional {@link IndexPredicateAnalyzer.FieldValidator validator}. A validator can be
