@@ -25,6 +25,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.clearspring.analytics.util.Lists;
+import com.google.common.collect.ImmutableList;
 import org.apache.hadoop.hbase.filter.BinaryComparator;
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp;
 import org.apache.hadoop.hbase.filter.Filter;
@@ -43,7 +45,7 @@ import org.apache.hadoop.mapred.JobConf;
 public class SampleHBaseKeyFactory3 extends SampleHBaseKeyFactory2 {
 
   @Override
-  public DecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer,
+  public HBaseDecomposedPredicate decomposePredicate(JobConf jobConf, Deserializer deserializer,
       ExprNodeDesc predicate) {
     SampleHBasePredicateDecomposer decomposedPredicate = new SampleHBasePredicateDecomposer(keyMapping);
     return decomposedPredicate.decomposePredicate(keyMapping.columnName, predicate);
@@ -61,7 +63,7 @@ class SampleHBasePredicateDecomposer extends AbstractHBaseKeyPredicateDecomposer
   }
 
   @Override
-  public HBaseScanRange getScanRange(List<IndexSearchCondition> searchConditions)
+  public List<HBaseScanRange> getScanRanges(List<IndexSearchCondition> searchConditions)
       throws Exception {
     Map<String, List<IndexSearchCondition>> fieldConds =
         new HashMap<String, List<IndexSearchCondition>>();
@@ -73,13 +75,12 @@ class SampleHBasePredicateDecomposer extends AbstractHBaseKeyPredicateDecomposer
       }
       fieldCond.add(condition);
     }
-    Filter filter = null;
     HBaseScanRange range = new HBaseScanRange();
 
     // xxx TODO: bring back addition of a filter here. The previous implementation was broken; it doesn't consider the possibility of conditions on multiple
     // fields in the struct, and simply ends up using the last one.
 
-    return range;
+    return ImmutableList.of(range);
   }
 
   private byte[] toBinary(String value, int max, boolean end, boolean nextBA) {
