@@ -32,7 +32,7 @@ import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 
 /**
  * Simple abstract class to help with creation of a {@link DecomposedPredicate}. In order to create
- * one, consumers should extend this class and override the "getScanRange" method to define the
+ * one, consumers should extend this class and override the "getScanRanges" method to define the
  * start/stop keys and/or filters on their hbase scans
  * */
 public abstract class AbstractHBaseKeyPredicateDecomposer {
