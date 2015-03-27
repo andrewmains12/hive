@@ -540,7 +540,7 @@ public class HBaseStorageHandler extends DefaultStorageHandler
   }
 
   @Override
-  public DecomposedPredicate decomposePredicate(
+  public HBaseDecomposedPredicate decomposePredicate(
     JobConf jobConf,
     Deserializer deserializer,
     ExprNodeDesc predicate)
