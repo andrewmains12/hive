@@ -1,0 +1,3 @@
+language: java
+install: mvn clean install -Phadoop-2 -DskipTests
+script: mvn clean test -Phadoop-2
