@@ -105,9 +105,9 @@ class SampleHBasePredicateDecomposer extends AbstractHBaseKeyPredicateDecomposer
           throw new IOException(comparisonOp + " is not a supported comparison operator");
         }
       }
-    }
-    if (filter != null) {
-      range.addFilter(filter);
+      if (filter != null) {
+        range.addFilter(filter);
+      }
     }
     return range;
   }
