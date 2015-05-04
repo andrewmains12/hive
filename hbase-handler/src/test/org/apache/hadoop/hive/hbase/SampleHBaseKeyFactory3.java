@@ -56,7 +56,7 @@ class SampleHBasePredicateDecomposer extends AbstractHBaseKeyPredicateDecomposer
   }
 
   @Override
-  public List<HBaseScanRange> getScanRanges(List<IndexSearchCondition> searchConditions)
+  public HBaseScanRange getScanRange(List<IndexSearchCondition> searchConditions)
       throws Exception {
     Map<String, List<IndexSearchCondition>> fieldConds =
         new HashMap<String, List<IndexSearchCondition>>();
@@ -73,7 +73,7 @@ class SampleHBasePredicateDecomposer extends AbstractHBaseKeyPredicateDecomposer
     // xxx TODO: bring back addition of a filter here. The previous implementation was broken; it doesn't consider the possibility of conditions on multiple
     // fields in the struct, and simply ends up using the last one.
 
-    return ImmutableList.of(range);
+    return range;
   }
 
   private byte[] toBinary(String value, int max, boolean end, boolean nextBA) {

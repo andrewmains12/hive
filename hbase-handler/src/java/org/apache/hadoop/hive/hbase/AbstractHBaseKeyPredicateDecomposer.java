@@ -65,12 +65,28 @@ public abstract class AbstractHBaseKeyPredicateDecomposer {
   }
 
   /**
+   * Translate searchConditions into a single scan range specifying start/stop keys and/or filters.
+   *
+   * Returns a full table scan by default.
+   * @param searchConditions
+   * @return
+   * @throws Exception
+   */
+  protected HBaseScanRange getScanRange(List<IndexSearchCondition> searchConditions) throws Exception {
+    return new HBaseScanRange();
+  }
+
+  /**
    * Get a list of scan ranges specifying start/stop keys and/or filters for one or more HBase scans.
+   *
+   * Defaults to returning ImmutableList.of(getScanRange(searchConditions))
    *
    * @param searchConditions
    * @return
    */
-  protected abstract List<HBaseScanRange> getScanRanges(List<IndexSearchCondition> searchConditions) throws Exception;
+  protected List<HBaseScanRange> getScanRanges(List<IndexSearchCondition> searchConditions) throws Exception {
+    return ImmutableList.of(getScanRange(searchConditions));
+  }
 
   /**
    * Get an optional {@link IndexPredicateAnalyzer.FieldValidator validator}. A validator can be
