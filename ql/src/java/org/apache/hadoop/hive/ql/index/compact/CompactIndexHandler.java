@@ -342,7 +342,11 @@ public class CompactIndexHandler extends TableBasedIndexHandler {
       useSorted = false;
     }
 
-    return new DecomposedPredicate(analyzer.translateSearchConditions(searchConditions), null, residualPredicate);
+    DecomposedPredicate decomposedPredicate = new DecomposedPredicate();
+    decomposedPredicate.pushedPredicate = analyzer.translateSearchConditions(searchConditions);
+    decomposedPredicate.residualPredicate = residualPredicate;
+
+    return decomposedPredicate;
   }
 
   /**
