@@ -1,0 +1,21 @@
+package  org.apache.hadoop.hive.hbase.filter;
+
+option java_package = "org.apache.hadoop.hive.hbase.filter";
+option java_outer_classname = "HiveHBaseFilterProtos";
+
+message FieldByteComparator {
+    required bytes value = 1;
+    required int32 fieldLength = 2;
+    required int32 offsetForField = 3;
+}
+
+message BytesBytesPair {
+  required bytes first = 1;
+  required bytes second = 2;
+}
+
+message FuzzyRowFilterFieldByte{
+    required string dimName = 1;
+    repeated bytes dimValues = 2;
+    repeated BytesBytesPair fuzzy_keys_data = 3;
+}

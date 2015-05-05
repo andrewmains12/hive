@@ -77,12 +77,12 @@ public class SampleHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
     return output.getLength() > 0 ? output.toByteArray() : null;
   }
 
-  private byte[] toBinary(String value, int max, boolean end, boolean nextBA) {
+  public static byte[] toBinary(String value, int max, boolean end, boolean nextBA) {
     return toBinary(value.getBytes(), max, end, nextBA);
   }
 
-  private byte[] toBinary(byte[] value, int max, boolean end, boolean nextBA) {
-    byte[] bytes = new byte[max + 1];
+  public static byte[] toBinary(byte[] value, int max, boolean end, boolean nextBA) {
+    byte[] bytes = nextBA ? new byte[max + 1] : new byte[max];
     System.arraycopy(value, 0, bytes, 0, Math.min(value.length, max));
     if (end) {
       Arrays.fill(bytes, value.length, max, (byte)0xff);
@@ -219,12 +219,10 @@ public class SampleHBaseKeyFactory2 extends AbstractHBaseKeyFactory {
     public void init(ByteArrayRef bytes, int start, int length) {
       fields.clear();
       byte[] data = bytes.getData();
-      int rowStart = start;
-      int rowStop = rowStart + fixedLength;
-      for (; rowStart < length; rowStart = rowStop + 1, rowStop = rowStart + fixedLength) {
-        fields.add(new String(data, rowStart, rowStop - rowStart).trim());
-      }
 
+      for (int offset = start; offset < length; offset += fixedLength) {
+        fields.add(new String(data, offset, fixedLength).trim());
+      }
       isNull = false;
     }
 

@@ -257,6 +257,29 @@
            </execution>
         </executions>
       </plugin>
+
+      <plugin>
+        <groupId>com.github.igor-petruk.protobuf</groupId>
+        <artifactId>protobuf-maven-plugin</artifactId>
+        <version>0.6.3</version>
+        <executions>
+          <execution>
+            <configuration>
+              <ignoreVersions>true</ignoreVersions>
+              <inputDirectories>
+                <inputDirectory>${project.basedir}/if/test/protobuf</inputDirectory>
+              </inputDirectories>
+              <cleanOutputFolder>false</cleanOutputFolder>
+              <outputDirectory>${project.basedir}/src/gen/protobuf/gen-java</outputDirectory>
+            </configuration>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <phase>generate-test-sources</phase>
+          </execution>
+        </executions>
+      </plugin>
+
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>build-helper-maven-plugin</artifactId>
@@ -271,6 +294,7 @@
                <configuration>
                   <sources>
                      <source>${project.basedir}/src/gen/avro/gen-java</source>
+                     <source>${project.basedir}/src/gen/protobuf/gen-java</source>
                   </sources>
                </configuration>
            </execution>

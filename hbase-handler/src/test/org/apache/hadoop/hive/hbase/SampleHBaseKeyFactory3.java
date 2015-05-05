@@ -26,10 +26,13 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.hadoop.hbase.filter.BinaryComparator;
+import org.apache.hadoop.hbase.filter.CompareFilter;
 import org.apache.hadoop.hbase.filter.CompareFilter.CompareOp;
 import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.filter.RowFilter;
 import org.apache.hadoop.hive.hbase.ColumnMappings.ColumnMapping;
+import org.apache.hadoop.hive.hbase.filter.FieldByteComparator;
+import org.apache.hadoop.hive.hbase.filter.RowFilterFieldByteComparator;
 import org.apache.hadoop.hive.ql.index.IndexSearchCondition;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 import org.apache.hadoop.hive.serde2.Deserializer;
@@ -77,34 +80,14 @@ class SampleHBasePredicateDecomposer extends AbstractHBaseKeyPredicateDecomposer
     HBaseScanRange range = new HBaseScanRange();
 
     StructTypeInfo type = (StructTypeInfo) keyMapping.columnType;
+    int offset = - FIXED_LENGTH;
     for (String name : type.getAllStructFieldNames()) {
+      offset += FIXED_LENGTH;
       List<IndexSearchCondition> fieldCond = fieldConds.get(name);
       if (fieldCond == null || fieldCond.size() > 2) {
         continue;
       }
-      for (IndexSearchCondition condition : fieldCond) {
-        if (condition.getConstantDesc().getValue() == null) {
-          continue;
-        }
-        String comparisonOp = condition.getComparisonOp();
-        String constantVal = String.valueOf(condition.getConstantDesc().getValue());
-
-        byte[] valueAsBytes = toBinary(constantVal, FIXED_LENGTH, false, false);
-
-        if (comparisonOp.endsWith("UDFOPEqual")) {
-          filter = new RowFilter(CompareOp.EQUAL, new BinaryComparator(valueAsBytes));
-        } else if (comparisonOp.endsWith("UDFOPEqualOrGreaterThan")) {
-          filter = new RowFilter(CompareOp.GREATER_OR_EQUAL, new BinaryComparator(valueAsBytes));
-        } else if (comparisonOp.endsWith("UDFOPGreaterThan")) {
-          filter = new RowFilter(CompareOp.GREATER, new BinaryComparator(valueAsBytes));
-        } else if (comparisonOp.endsWith("UDFOPEqualOrLessThan")) {
-          filter = new RowFilter(CompareOp.LESS_OR_EQUAL, new BinaryComparator(valueAsBytes));
-        } else if (comparisonOp.endsWith("UDFOPLessThan")) {
-          filter = new RowFilter(CompareOp.LESS, new BinaryComparator(valueAsBytes));
-        } else {
-          throw new IOException(comparisonOp + " is not a supported comparison operator");
-        }
-      }
+      filter = searchConditionsToFilter(offset, fieldCond);
       if (filter != null) {
         range.addFilter(filter);
       }
@@ -112,19 +95,33 @@ class SampleHBasePredicateDecomposer extends AbstractHBaseKeyPredicateDecomposer
     return range;
   }
 
-  private byte[] toBinary(String value, int max, boolean end, boolean nextBA) {
-    return toBinary(value.getBytes(), max, end, nextBA);
-  }
+  public Filter searchConditionsToFilter(int offset, List<IndexSearchCondition> fieldCond)
+      throws IOException {
+    Filter filter = null;
+    for (IndexSearchCondition condition : fieldCond) {
+      if (condition.getConstantDesc().getValue() == null) {
+        continue;
+      }
+      String comparisonOp = condition.getComparisonOp();
+      String constantVal = String.valueOf(condition.getConstantDesc().getValue());
 
-  private byte[] toBinary(byte[] value, int max, boolean end, boolean nextBA) {
-    byte[] bytes = new byte[max + 1];
-    System.arraycopy(value, 0, bytes, 0, Math.min(value.length, max));
-    if (end) {
-      Arrays.fill(bytes, value.length, max, (byte) 0xff);
+      byte[] valueAsBytes = SampleHBaseKeyFactory2.toBinary(constantVal, FIXED_LENGTH, false, false);
+      FieldByteComparator rowComparator =
+          new FieldByteComparator(valueAsBytes, offset, FIXED_LENGTH);
+      if (comparisonOp.endsWith("UDFOPEqual")) {
+        filter = new RowFilterFieldByteComparator(CompareOp.EQUAL, rowComparator);
+      } else if (comparisonOp.endsWith("UDFOPEqualOrGreaterThan")) {
+        filter = new RowFilterFieldByteComparator(CompareOp.GREATER_OR_EQUAL, rowComparator);
+      } else if (comparisonOp.endsWith("UDFOPGreaterThan")) {
+        filter = new RowFilterFieldByteComparator(CompareOp.GREATER, rowComparator);
+      } else if (comparisonOp.endsWith("UDFOPEqualOrLessThan")) {
+        filter = new RowFilterFieldByteComparator(CompareOp.LESS_OR_EQUAL, rowComparator);
+      } else if (comparisonOp.endsWith("UDFOPLessThan")) {
+        filter = new RowFilterFieldByteComparator(CompareOp.LESS, rowComparator);
+      } else {
+        throw new IOException(comparisonOp + " is not a supported comparison operator");
+      }
     }
-    if (nextBA) {
-      bytes[max] = 0x01;
-    }
-    return bytes;
+    return filter;
   }
 }
